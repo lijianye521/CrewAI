@@ -39,6 +39,7 @@ class Meeting(Base):
     #   "speaking_time_limit": 120,  // 单次发言时长限制(秒)
     #   "max_rounds": 5,             // 最大发言轮次
     #   "allow_interruption": false,
+    
     #   "require_conclusion": true,
     #   "auto_summarize": true
     # }

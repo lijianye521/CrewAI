@@ -47,7 +47,7 @@ const menuItems = [
     children: [
       { key: 'meetings-list', label: '会议列表', path: '/meetings' },
       { key: 'meetings-create', label: '创建会议', path: '/meetings/create' },
-      { key: 'meetings-live', label: '实时会议', path: '/meetings/live' }
+      { key: 'meetings-history', label: '会议历史', path: '/meetings/history' }
     ]
   },
   {
@@ -57,10 +57,10 @@ const menuItems = [
     path: '/history'
   },
   {
-    key: 'settings',
+    key: 'config',
     icon: <Settings className="w-5 h-5" />,
     label: '系统配置',
-    path: '/settings'
+    path: '/config'
   }
 ];
 
@@ -68,6 +68,50 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
   const router = useRouter();
   const [activeKey, setActiveKey] = React.useState('dashboard');
   const [expandedKeys, setExpandedKeys] = React.useState<string[]>([]);
+
+  // 获取当前路径并设置活跃状态
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const currentPath = window.location.pathname;
+
+      // 根据路径确定活跃的菜单项
+      if (currentPath === '/') {
+        setActiveKey('dashboard');
+      } else if (currentPath.startsWith('/agents')) {
+        setActiveKey('agents');
+        setExpandedKeys(prev => prev.includes('agents') ? prev : [...prev, 'agents']);
+
+        // 设置子菜单的活跃状态
+        if (currentPath === '/agents') {
+          setActiveKey('agents-list');
+        } else if (currentPath === '/agents/create') {
+          setActiveKey('agents-create');
+        } else if (currentPath === '/agents/templates') {
+          setActiveKey('agents-templates');
+        } else if (currentPath.includes('/agents/edit/')) {
+          setActiveKey('agents-list'); // 编辑页面归类到列表
+        }
+      } else if (currentPath.startsWith('/meetings')) {
+        setActiveKey('meetings');
+        setExpandedKeys(prev => prev.includes('meetings') ? prev : [...prev, 'meetings']);
+
+        // 设置子菜单的活跃状态
+        if (currentPath === '/meetings') {
+          setActiveKey('meetings-list');
+        } else if (currentPath === '/meetings/create') {
+          setActiveKey('meetings-create');
+        } else if (currentPath === '/meetings/history') {
+          setActiveKey('meetings-history');
+        } else if (currentPath.includes('/meetings/live/') || currentPath.includes('/meetings/edit/')) {
+          setActiveKey('meetings-list'); // 实时会议和编辑页面归类到列表
+        }
+      } else if (currentPath === '/history') {
+        setActiveKey('history');
+      } else if (currentPath === '/config' || currentPath === '/settings') {
+        setActiveKey('config');
+      }
+    }
+  }, []);
 
   const handleMenuClick = (item: any) => {
     setActiveKey(item.key);
