@@ -1,17 +1,11 @@
 'use client';
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
-import { 
-  Home, 
-  Bot, 
-  Calendar, 
-  Settings, 
-  History, 
-  Users,
-  Database,
-  Activity,
-  FileText,
+import {
+  Home,
+  Bot,
+  Calendar,
+  Settings,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -19,6 +13,8 @@ import {
 interface SidebarProps {
   collapsed?: boolean;
   onToggle?: () => void;
+  currentView: string;
+  currentSubView: string;
 }
 
 const menuItems = [
@@ -26,111 +22,70 @@ const menuItems = [
     key: 'dashboard',
     icon: <Home className="w-5 h-5" />,
     label: '仪表盘',
-    path: '/'
+    hash: '#dashboard'
   },
   {
     key: 'agents',
     icon: <Bot className="w-5 h-5" />,
     label: '智能体管理',
-    path: '/agents',
+    hash: '#agents',
     children: [
-      { key: 'agents-list', label: '智能体列表', path: '/agents' },
-      { key: 'agents-create', label: '创建智能体', path: '/agents/create' },
-      { key: 'agents-templates', label: '模板库', path: '/agents/templates' }
+      { key: 'agentList', label: '智能体列表', hash: '#agents/list' },
+      { key: 'createAgent', label: '创建智能体', hash: '#agents/create' },
+      { key: 'agentTemplates', label: '模板库', hash: '#agents/templates' }
     ]
   },
   {
     key: 'meetings',
     icon: <Calendar className="w-5 h-5" />,
     label: '会议管理',
-    path: '/meetings',
+    hash: '#meetings',
     children: [
-      { key: 'meetings-list', label: '会议列表', path: '/meetings' },
-      { key: 'meetings-create', label: '创建会议', path: '/meetings/create' },
-      { key: 'meetings-history', label: '会议历史', path: '/meetings/history' }
+      { key: 'meetingList', label: '会议列表', hash: '#meetings/list' },
+      { key: 'createMeeting', label: '创建会议', hash: '#meetings/create' },
+      { key: 'meetingHistory', label: '会议历史', hash: '#meetings/history' }
     ]
-  },
-  {
-    key: 'history',
-    icon: <History className="w-5 h-5" />,
-    label: '历史回溯',
-    path: '/history'
   },
   {
     key: 'config',
     icon: <Settings className="w-5 h-5" />,
     label: '系统配置',
-    path: '/config'
+    hash: '#config'
   }
 ];
 
-export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
-  const router = useRouter();
-  const [activeKey, setActiveKey] = React.useState('dashboard');
+export default function Sidebar({ collapsed = false, onToggle, currentView, currentSubView }: SidebarProps) {
   const [expandedKeys, setExpandedKeys] = React.useState<string[]>([]);
 
-  // 获取当前路径并设置活跃状态
+  // 根据当前视图自动展开相关菜单
   React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const currentPath = window.location.pathname;
-
-      // 根据路径确定活跃的菜单项
-      if (currentPath === '/') {
-        setActiveKey('dashboard');
-      } else if (currentPath.startsWith('/agents')) {
-        setActiveKey('agents');
-        setExpandedKeys(prev => prev.includes('agents') ? prev : [...prev, 'agents']);
-
-        // 设置子菜单的活跃状态
-        if (currentPath === '/agents') {
-          setActiveKey('agents-list');
-        } else if (currentPath === '/agents/create') {
-          setActiveKey('agents-create');
-        } else if (currentPath === '/agents/templates') {
-          setActiveKey('agents-templates');
-        } else if (currentPath.includes('/agents/edit/')) {
-          setActiveKey('agents-list'); // 编辑页面归类到列表
-        }
-      } else if (currentPath.startsWith('/meetings')) {
-        setActiveKey('meetings');
-        setExpandedKeys(prev => prev.includes('meetings') ? prev : [...prev, 'meetings']);
-
-        // 设置子菜单的活跃状态
-        if (currentPath === '/meetings') {
-          setActiveKey('meetings-list');
-        } else if (currentPath === '/meetings/create') {
-          setActiveKey('meetings-create');
-        } else if (currentPath === '/meetings/history') {
-          setActiveKey('meetings-history');
-        } else if (currentPath.includes('/meetings/live/') || currentPath.includes('/meetings/edit/')) {
-          setActiveKey('meetings-list'); // 实时会议和编辑页面归类到列表
-        }
-      } else if (currentPath === '/history') {
-        setActiveKey('history');
-      } else if (currentPath === '/config' || currentPath === '/settings') {
-        setActiveKey('config');
-      }
+    if (currentView === 'agents' || currentView === 'meetings') {
+      setExpandedKeys(prev => prev.includes(currentView) ? prev : [...prev, currentView]);
     }
-  }, []);
+  }, [currentView]);
 
-  const handleMenuClick = (item: any) => {
-    setActiveKey(item.key);
+  const handleMenuClick = (item: { key: string; hash: string; children?: { key: string; label: string; hash: string }[] }) => {
     if (item.children) {
       // Toggle expansion for parent items
-      setExpandedKeys(prev => 
-        prev.includes(item.key) 
+      setExpandedKeys(prev =>
+        prev.includes(item.key)
           ? prev.filter(k => k !== item.key)
           : [...prev, item.key]
       );
     } else {
       // Navigate for leaf items
-      router.push(item.path);
+      window.location.hash = item.hash;
     }
   };
 
-  const handleSubMenuClick = (item: any) => {
-    setActiveKey(item.key);
-    router.push(item.path);
+  const handleSubMenuClick = (item: { key: string; hash: string }) => {
+    window.location.hash = item.hash;
+  };
+
+  const isActive = (key: string) => {
+    if (key === currentView) return true;
+    if (key === currentSubView) return true;
+    return false;
   };
 
   return (
@@ -161,7 +116,7 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
               <button
                 onClick={() => handleMenuClick(item)}
                 className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeKey === item.key
+                  isActive(item.key)
                     ? 'bg-gray-900 text-white'
                     : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                 }`}
@@ -171,16 +126,16 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
                   <>
                     <span className="ml-3 flex-1 text-left">{item.label}</span>
                     {item.children && (
-                      <ChevronRight 
+                      <ChevronRight
                         className={`w-4 h-4 transition-transform ${
                           expandedKeys.includes(item.key) ? 'transform rotate-90' : ''
-                        }`} 
+                        }`}
                       />
                     )}
                   </>
                 )}
               </button>
-              
+
               {/* Sub Menu */}
               {!collapsed && item.children && expandedKeys.includes(item.key) && (
                 <div className="ml-6 mt-1 space-y-1">
@@ -189,7 +144,7 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
                       key={subItem.key}
                       onClick={() => handleSubMenuClick(subItem)}
                       className={`w-full flex items-center px-3 py-1.5 rounded-md text-sm transition-colors ${
-                        activeKey === subItem.key
+                        isActive(subItem.key)
                           ? 'bg-gray-100 text-gray-900 font-medium'
                           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                       }`}

@@ -21,12 +21,12 @@ import {
   Select,
   DatePicker
 } from 'antd';
-import { 
+import {
   EyeOutlined,
   PlayCircleOutlined,
   ClockCircleOutlined,
   MessageOutlined,
-  UsersOutlined,
+  UserOutlined,
   SearchOutlined,
   FilterOutlined,
   DownloadOutlined
@@ -211,7 +211,7 @@ export default function MeetingHistoryPage() {
     }
   };
 
-  const generateMeetingReport = (meetingData: any) => {
+  const generateMeetingReport = (meetingData: { meeting: Record<string, unknown>; messages?: Record<string, unknown>[] }) => {
     const meeting = meetingData.meeting;
     const messages = meetingData.messages || [];
     
@@ -290,7 +290,7 @@ export default function MeetingHistoryPage() {
       render: (_, record: HistoricalMeeting) => (
         <div className="space-y-1">
           <div className="flex items-center gap-1">
-            <UsersOutlined className="text-blue-500" />
+            <UserOutlined className="text-blue-500" />
             <span className="text-sm">{record.participants_count} 人</span>
           </div>
           <div className="flex items-center gap-1">
