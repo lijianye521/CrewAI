@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from ..models import get_database_session
 from ..services.deepseek_service import deepseek_service, api_key_manager
+from datetime import datetime
 
 router = APIRouter()
 
@@ -91,89 +92,209 @@ def remove_deepseek_api_key(
 
 # 模型配置管理
 @router.get("/config/models")
-def get_available_models():
+def get_model_config(user_id: str = "default"):
     """
-    获取可用的模型列表
+    获取模型配置
+    
+    根据 DeepSeek API 文档：https://api-docs.deepseek.com/zh-cn/
+    - Base URL: https://api.deepseek.com
+    - 兼容 OpenAI API 格式
+    - 支持模型: deepseek-chat, deepseek-reasoner
     """
     try:
-        models = deepseek_service.get_available_models()
+        has_key = api_key_manager.has_key(user_id)
         
         return {
-            "available_models": models,
-            "default_model": "deepseek-chat",
-            "model_info": {
-                "deepseek-chat": {
-                    "name": "DeepSeek Chat",
-                    "description": "通用对话模型，适合大部分场景",
-                    "max_tokens": 4000,
-                    "pricing": "按token计费"
+            "openai_api_key": "sk-****" if has_key else None,
+            "openai_base_url": "https://api.deepseek.com",
+            "model": "deepseek-chat",
+            "max_tokens": 2000,
+            "temperature": 0.7,
+            "is_configured": has_key,
+            "available_models": [
+                {
+                    "id": "deepseek-chat",
+                    "name": "DeepSeek Chat (V3.1)",
+                    "description": "DeepSeek-V3.1 非思考模式，适合日常对话和任务",
+                    "max_tokens": 4096,
+                    "pricing": {
+                        "input": "$0.14 / 1M tokens",
+                        "output": "$0.28 / 1M tokens"
+                    }
                 },
-                "deepseek-coder": {
-                    "name": "DeepSeek Coder", 
-                    "description": "代码生成和编程相关模型",
-                    "max_tokens": 4000,
-                    "pricing": "按token计费"
-                },
-                "deepseek-math": {
-                    "name": "DeepSeek Math",
-                    "description": "数学和逻辑推理模型",
-                    "max_tokens": 4000,
-                    "pricing": "按token计费"
+                {
+                    "id": "deepseek-reasoner",
+                    "name": "DeepSeek Reasoner (V3.1)",
+                    "description": "DeepSeek-V3.1 思考模式，适合复杂推理任务",
+                    "max_tokens": 4096,
+                    "pricing": {
+                        "input": "$0.55 / 1M tokens",
+                        "output": "$2.19 / 1M tokens"
+                    }
                 }
-            }
+            ]
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get models: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get model config: {str(e)}")
 
-@router.post("/config/test-model")
-async def test_model_connection(
-    config_request: ModelConfigRequest,
+@router.post("/config/models")
+async def update_model_config(
+    config_data: Dict[str, Any],
     user_id: str = "default"
 ):
     """
-    测试模型连接和配置
+    更新模型配置
+    
+    支持 DeepSeek API 配置:
+    {
+      "openai_api_key": "sk-...",  // DeepSeek API Key
+      "openai_base_url": "https://api.deepseek.com",
+      "model": "deepseek-chat",  // deepseek-chat 或 deepseek-reasoner
+      "max_tokens": 2000,
+      "temperature": 0.7
+    }
     """
     try:
-        # 检查API密钥
-        if not api_key_manager.has_key(user_id):
-            raise HTTPException(status_code=400, detail="API key not configured")
+        # 验证模型是否支持
+        supported_models = ["deepseek-chat", "deepseek-reasoner"]
+        if "model" in config_data and config_data["model"] not in supported_models:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported model. Supported models: {', '.join(supported_models)}"
+            )
         
-        # 获取API密钥
-        api_key = api_key_manager.get_key(user_id)
-        test_service = deepseek_service.__class__(api_key)
+        # 验证 base_url
+        if "openai_base_url" in config_data:
+            base_url = config_data["openai_base_url"]
+            if not base_url.startswith("https://api.deepseek.com"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid base URL. Please use https://api.deepseek.com for DeepSeek API"
+                )
         
-        # 测试模型调用
-        test_messages = [
-            {"role": "user", "content": "Hello, this is a test message. Please respond briefly."}
-        ]
+        # 如果提供了API密钥，验证并保存
+        if "openai_api_key" in config_data:
+            api_key = config_data["openai_api_key"]
+            
+            # 验证 API Key 格式
+            if not api_key.startswith("sk-"):
+                raise HTTPException(status_code=400, detail="Invalid API key format. DeepSeek API key should start with 'sk-'")
+            
+            # 验证API密钥有效性
+            is_valid = await deepseek_service.validate_api_key(api_key)
+            if not is_valid:
+                raise HTTPException(status_code=400, detail="Invalid API key. Please check your DeepSeek API key.")
+            
+            api_key_manager.set_key(user_id, api_key)
         
-        response = await test_service.chat_completion(
-            messages=test_messages,
-            model=config_request.model,
-            temperature=config_request.temperature,
-            max_tokens=min(config_request.max_tokens, 100)  # 限制测试token数
-        )
-        
-        # 估算成本
-        usage = response.get("usage", {})
-        input_tokens = usage.get("prompt_tokens", 0)
-        output_tokens = usage.get("completion_tokens", 0)
-        estimated_cost = deepseek_service.estimate_cost(input_tokens, output_tokens)
+        # TODO: 保存其他配置到数据库
+        # 可以保存 model, max_tokens, temperature 等参数
         
         return {
-            "status": "success",
-            "model": config_request.model,
-            "response_preview": response["choices"][0]["message"]["content"][:100] + "..." if len(response["choices"][0]["message"]["content"]) > 100 else response["choices"][0]["message"]["content"],
-            "token_usage": usage,
-            "estimated_cost_usd": round(estimated_cost, 6),
-            "test_timestamp": "2024-01-01T00:00:00Z"
+            "message": "DeepSeek 模型配置更新成功",
+            "is_configured": True,
+            "config": {
+                "base_url": config_data.get("openai_base_url", "https://api.deepseek.com"),
+                "model": config_data.get("model", "deepseek-chat"),
+                "max_tokens": config_data.get("max_tokens", 2000),
+                "temperature": config_data.get("temperature", 0.7)
+            }
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Model test failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update model config: {str(e)}")
+
+@router.post("/config/test-connection")
+async def test_connection(
+    test_config: Dict[str, Any]
+):
+    """
+    测试 DeepSeek 模型连接
+    
+    Request Body:
+    {
+      "openai_api_key": "sk-...",  // DeepSeek API Key
+      "openai_base_url": "https://api.deepseek.com",
+      "model": "deepseek-chat"  // deepseek-chat 或 deepseek-reasoner
+    }
+    
+    根据 DeepSeek API 文档进行连接测试
+    """
+    try:
+        import time
+        start_time = time.time()
+        
+        # 获取测试参数
+        api_key = test_config.get("openai_api_key")
+        base_url = test_config.get("openai_base_url", "https://api.deepseek.com")
+        model = test_config.get("model", "deepseek-chat")
+        
+        if not api_key:
+            raise HTTPException(status_code=400, detail="DeepSeek API key is required")
+        
+        # 验证 API Key 格式
+        if not api_key.startswith("sk-"):
+            raise HTTPException(status_code=400, detail="Invalid DeepSeek API key format")
+        
+        # 验证模型
+        supported_models = ["deepseek-chat", "deepseek-reasoner"]
+        if model not in supported_models:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported model '{model}'. Supported models: {', '.join(supported_models)}"
+            )
+        
+        # 创建测试服务实例
+        test_service = deepseek_service.__class__(api_key)
+        
+        # 测试模型调用 - 使用简单的测试消息
+        test_messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "你好，这是一个连接测试。请简短回复。"}
+        ]
+        
+        response = await test_service.chat_completion(
+            messages=test_messages,
+            model=model,
+            max_tokens=20,  # 限制测试token数量
+            temperature=0.1  # 使用低 temperature 保证稳定输出
+        )
+        
+        # 计算响应时间
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # 获取响应内容和使用统计
+        response_content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        usage = response.get("usage", {})
+        
+        return {
+            "success": True,
+            "message": "DeepSeek API 连接测试成功",
+            "model_info": {
+                "model": model,
+                "available": True,
+                "response_time_ms": response_time_ms,
+                "base_url": base_url
+            },
+            "test_response": {
+                "content": response_content[:100] + "..." if len(response_content) > 100 else response_content,
+                "usage": usage
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = str(e)
+        if "401" in error_msg or "unauthorized" in error_msg.lower():
+            raise HTTPException(status_code=400, detail="Invalid DeepSeek API key. Please check your API key.")
+        elif "429" in error_msg or "rate limit" in error_msg.lower():
+            raise HTTPException(status_code=429, detail="DeepSeek API rate limit exceeded. Please try again later.")
+        else:
+            raise HTTPException(status_code=500, detail=f"DeepSeek API connection test failed: {error_msg}")
 
 # 系统配置
 @router.get("/config/system", response_model=SystemConfigResponse)
@@ -278,6 +399,53 @@ async def check_service_health(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
 
+# 获取 DeepSeek 模型信息
+@router.get("/config/deepseek-models")
+def get_deepseek_models():
+    """
+    获取 DeepSeek 支持的模型列表
+    
+    根据 DeepSeek API 文档返回最新的模型信息
+    """
+    try:
+        models = [
+            {
+                "id": "deepseek-chat",
+                "name": "DeepSeek Chat (V3.1)",
+                "description": "DeepSeek-V3.1 非思考模式，适合日常对话和多数任务",
+                "max_tokens": 4096,
+                "context_length": "128K tokens",
+                "pricing": {
+                    "input": "$0.14 / 1M tokens",
+                    "output": "$0.28 / 1M tokens"
+                },
+                "features": ["general_conversation", "coding", "analysis", "creative_writing"]
+            },
+            {
+                "id": "deepseek-reasoner",
+                "name": "DeepSeek Reasoner (V3.1)",
+                "description": "DeepSeek-V3.1 思考模式，适合复杂推理和问题解决",
+                "max_tokens": 4096,
+                "context_length": "128K tokens",
+                "pricing": {
+                    "input": "$0.55 / 1M tokens",
+                    "output": "$2.19 / 1M tokens"
+                },
+                "features": ["complex_reasoning", "math", "science", "logical_analysis"]
+            }
+        ]
+        
+        return {
+            "models": models,
+            "default_model": "deepseek-chat",
+            "api_base_url": "https://api.deepseek.com",
+            "documentation": "https://api-docs.deepseek.com/zh-cn/",
+            "updated_at": "2024-12-26"  # DeepSeek V3 发布日期
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get DeepSeek models: {str(e)}")
+
 # 导出配置
 @router.get("/config/export")
 def export_system_config():
@@ -286,23 +454,27 @@ def export_system_config():
     """
     try:
         config = {
-            "version": "1.0.0",
-            "models": {
-                "available": deepseek_service.get_available_models(),
-                "default": "deepseek-chat"
+            "version": "2.0.0",
+            "ai_provider": {
+                "name": "DeepSeek",
+                "base_url": "https://api.deepseek.com",
+                "default_model": "deepseek-chat",
+                "supported_models": ["deepseek-chat", "deepseek-reasoner"]
             },
             "limits": {
-                "max_tokens_per_request": 4000,
+                "max_tokens_per_request": 4096,
                 "max_participants_per_meeting": 10,
-                "max_messages_per_meeting": 1000
+                "max_messages_per_meeting": 1000,
+                "context_length": "128K tokens"
             },
             "features": {
                 "agent_customization": True,
                 "meeting_replay": True,
                 "real_time_collaboration": True,
-                "analytics": True
+                "analytics": True,
+                "deepseek_integration": True
             },
-            "export_timestamp": "2024-01-01T00:00:00Z"
+            "export_timestamp": datetime.utcnow().isoformat()
         }
         
         return config

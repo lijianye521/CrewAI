@@ -52,10 +52,10 @@ class MeetingCreate(BaseModel):
     title: str
     description: Optional[str] = None
     topic: str
-    scheduled_start: Optional[datetime] = None
-    duration_limit: Optional[int] = None
+    scheduled_start_time: Optional[datetime] = None
     meeting_rules: Optional[Dict[str, Any]] = None
     discussion_config: Optional[Dict[str, Any]] = None
+    participant_agents: Optional[List[int]] = None
 
 class MeetingUpdate(BaseModel):
     title: Optional[str] = None
@@ -130,19 +130,40 @@ async def create_meeting(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@router.get("/meetings", response_model=List[MeetingResponse])
+@router.get("/meetings")
 def get_meetings(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    status: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, description="会议状态筛选 (draft|scheduled|active|paused|completed|cancelled)"),
+    page: int = Query(1, ge=1, description="分页页码，默认1"),
+    limit: int = Query(10, ge=1, le=100, description="每页数量，默认10"),
     meeting_service: MeetingService = Depends(get_meeting_service)
 ):
     """
     获取会议列表
+    
+    Query Parameters:
+    - status: string (可选) - 会议状态筛选 (draft|scheduled|active|paused|completed|cancelled)
+    - page: int (可选) - 分页页码，默认1
+    - limit: int (可选) - 每页数量，默认10
     """
     try:
+        skip = (page - 1) * limit
         meetings = meeting_service.get_meetings(skip=skip, limit=limit, status=status)
-        return [MeetingResponse(**meeting.to_dict()) for meeting in meetings]
+        total = meeting_service.count_meetings(status=status)
+        
+        meeting_list = []
+        for meeting in meetings:
+            meeting_dict = meeting.to_dict()
+            # 计算参与者数量和消息数量
+            meeting_dict['participants_count'] = meeting_service.count_participants(meeting.id)
+            meeting_dict['messages_count'] = meeting_service.count_messages(meeting.id)
+            meeting_list.append(meeting_dict)
+        
+        return {
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "data": meeting_list
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -208,7 +229,7 @@ def delete_meeting(
         if not success:
             raise HTTPException(status_code=404, detail="Meeting not found")
         
-        return {"message": "Meeting deleted successfully"}
+        return {"message": "会议删除成功"}
     except HTTPException:
         raise
     except Exception as e:
@@ -245,6 +266,43 @@ def get_meeting_participants(
     try:
         participants = meeting_service.get_meeting_participants(meeting_id)
         return [p.to_dict() for p in participants]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@router.patch("/meetings/{meeting_id}/status")
+async def update_meeting_status(
+    meeting_id: int,
+    status_update: Dict[str, str],
+    meeting_service: MeetingService = Depends(get_meeting_service)
+):
+    """
+    更新会议状态
+    
+    Request Body:
+    {
+      "status": "active" // draft|scheduled|active|paused|completed|cancelled
+    }
+    """
+    try:
+        new_status = status_update.get("status")
+        if not new_status:
+            raise HTTPException(status_code=400, detail="Status is required")
+        
+        valid_statuses = ["draft", "scheduled", "active", "paused", "completed", "cancelled"]
+        if new_status not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+        
+        meeting = await meeting_service.update_meeting_status(meeting_id, new_status)
+        if not meeting:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+        
+        return {
+            "id": meeting.id,
+            "status": meeting.status,
+            "updated_at": meeting.updated_at.isoformat()
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 

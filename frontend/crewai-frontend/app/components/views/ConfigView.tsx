@@ -6,7 +6,7 @@ import {
   Form,
   Input,
   Button,
-  message,
+  App,
   Alert,
   Row,
   Col,
@@ -17,6 +17,7 @@ import {
   CheckCircleOutlined,
   ExperimentOutlined
 } from '@ant-design/icons';
+import { ConfigService } from '../../lib/api';
 
 const { Password } = Input;
 const { Option } = Select;
@@ -30,12 +31,13 @@ interface ModelConfig {
 }
 
 export default function ConfigView() {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
     openai_api_key: '',
-    openai_base_url: 'https://api.openai.com/v1',
-    model: 'gpt-3.5-turbo',
+    openai_base_url: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
     max_tokens: 2000,
     temperature: 0.7
   });

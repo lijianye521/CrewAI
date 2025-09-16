@@ -15,7 +15,9 @@ class DeepSeekService:
     
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
-        self.base_url = "https://api.deepseek.com/v1"
+        # 根据 DeepSeek API 文档，支持两种 base_url 格式
+        self.base_url = "https://api.deepseek.com"  # 主要格式
+        self.base_url_v1 = "https://api.deepseek.com/v1"  # OpenAI 兼容格式
         self.timeout = 30
         self.max_retries = 3
         
@@ -337,21 +339,24 @@ class DeepSeekService:
             return False
     
     def get_available_models(self) -> List[str]:
-        """获取可用的模型列表"""
+        """获取可用的模型列表 - 根据 DeepSeek API 文档更新"""
         return [
-            "deepseek-chat",
-            "deepseek-coder",
-            "deepseek-math"
+            "deepseek-chat",     # DeepSeek-V3.1 非思考模式
+            "deepseek-reasoner"  # DeepSeek-V3.1 思考模式
         ]
     
-    def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
-        """估算API调用成本 (USD)"""
-        # DeepSeek 定价 (示例，请根据实际定价调整)
-        input_cost_per_1k = 0.0014  # 每1k input tokens
-        output_cost_per_1k = 0.0028  # 每1k output tokens
+    def estimate_cost(self, input_tokens: int, output_tokens: int, model: str = "deepseek-chat") -> float:
+        """估算API调用成本 (USD) - 根据 DeepSeek 官方定价"""
+        # DeepSeek V3.1 定价 (根据官方文档)
+        if model == "deepseek-reasoner":
+            input_cost_per_1m = 0.55   # $0.55 / 1M input tokens
+            output_cost_per_1m = 2.19  # $2.19 / 1M output tokens
+        else:  # deepseek-chat 默认
+            input_cost_per_1m = 0.14   # $0.14 / 1M input tokens  
+            output_cost_per_1m = 0.28  # $0.28 / 1M output tokens
         
-        input_cost = (input_tokens / 1000) * input_cost_per_1k
-        output_cost = (output_tokens / 1000) * output_cost_per_1k
+        input_cost = (input_tokens / 1000000) * input_cost_per_1m
+        output_cost = (output_tokens / 1000000) * output_cost_per_1m
         
         return input_cost + output_cost
 

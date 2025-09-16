@@ -49,13 +49,16 @@ class MeetingService:
             meeting_data.setdefault("discussion_config", Meeting.get_default_discussion_config())
             meeting_data.setdefault("status", MeetingStatus.DRAFT)
             
+            # 处理字段名称兼容
+            scheduled_start = meeting_data.get("scheduled_start_time") or meeting_data.get("scheduled_start")
+            
             # 创建会议对象
             meeting = Meeting(
                 title=meeting_data["title"],
                 description=meeting_data.get("description"),
                 topic=meeting_data["topic"],
                 status=meeting_data["status"],
-                scheduled_start=meeting_data.get("scheduled_start"),
+                scheduled_start=scheduled_start,
                 duration_limit=meeting_data.get("duration_limit"),
                 meeting_rules=meeting_data["meeting_rules"],
                 discussion_config=meeting_data["discussion_config"],
@@ -65,6 +68,17 @@ class MeetingService:
             self.db.add(meeting)
             self.db.commit()
             self.db.refresh(meeting)
+            
+            # 如果提供了参与者列表，添加参与者
+            participant_agents = meeting_data.get("participant_agents", [])
+            if participant_agents:
+                for agent_id in participant_agents:
+                    participant_data = {
+                        "agent_id": agent_id,
+                        "role_in_meeting": "participant",
+                        "speaking_priority": 1.0
+                    }
+                    await self.add_participant(meeting.id, participant_data)
             
             logger.info(f"Created meeting: {meeting.title} (ID: {meeting.id})")
             return meeting
@@ -149,6 +163,54 @@ class MeetingService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to delete meeting {meeting_id}: {str(e)}")
+            raise
+    
+    def count_meetings(self, status: Optional[str] = None) -> int:
+        """统计会议数量"""
+        query = self.db.query(Meeting)
+        if status:
+            query = query.filter(Meeting.status == status)
+        return query.count()
+    
+    def count_participants(self, meeting_id: int) -> int:
+        """统计会议参与者数量"""
+        return self.db.query(MeetingParticipant).filter(
+            MeetingParticipant.meeting_id == meeting_id
+        ).count()
+    
+    def count_messages(self, meeting_id: int) -> int:
+        """统计会议消息数量"""
+        return self.db.query(MeetingMessage).filter(
+            MeetingMessage.meeting_id == meeting_id
+        ).count()
+    
+    async def update_meeting_status(self, meeting_id: int, new_status: str) -> Optional[Meeting]:
+        """更新会议状态"""
+        try:
+            meeting = self.get_meeting_by_id(meeting_id)
+            if not meeting:
+                return None
+            
+            meeting.status = new_status
+            meeting.updated_at = datetime.utcnow()
+            
+            # 如果状态变为active，记录实际开始时间
+            if new_status == MeetingStatus.ACTIVE and not meeting.actual_start:
+                meeting.actual_start = datetime.utcnow()
+            
+            # 如果状态变为completed，记录结束时间
+            if new_status == MeetingStatus.COMPLETED and not meeting.actual_end:
+                meeting.actual_end = datetime.utcnow()
+            
+            self.db.commit()
+            self.db.refresh(meeting)
+            
+            logger.info(f"Updated meeting status: {meeting.title} (ID: {meeting.id}) -> {new_status}")
+            return meeting
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to update meeting status {meeting_id}: {str(e)}")
             raise
     
     async def add_participant(

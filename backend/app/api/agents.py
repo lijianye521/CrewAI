@@ -81,16 +81,21 @@ async def create_agent(
 
 @router.get("/agents", response_model=List[AgentResponse])
 def get_agents(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    active_only: bool = Query(True),
+    is_active: Optional[bool] = Query(None, description="是否只获取活跃的智能体"),
     agent_service: AgentService = Depends(get_agent_service)
 ):
     """
     获取Agent列表
+    
+    Query Parameters:
+    - is_active: boolean (可选) - 是否只获取活跃的智能体
     """
     try:
-        agents = agent_service.get_agents(skip=skip, limit=limit, active_only=active_only)
+        # 获取所有agents或根据is_active筛选
+        if is_active is not None:
+            agents = agent_service.get_agents(skip=0, limit=1000, active_only=is_active)
+        else:
+            agents = agent_service.get_agents(skip=0, limit=1000, active_only=False)
         return [AgentResponse(**agent.to_dict()) for agent in agents]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -154,7 +159,7 @@ def delete_agent(
         if not success:
             raise HTTPException(status_code=404, detail="Agent not found")
         
-        return {"message": "Agent deleted successfully", "hard_delete": hard_delete}
+        return {"message": "智能体删除成功"}
     except HTTPException:
         raise
     except Exception as e:
