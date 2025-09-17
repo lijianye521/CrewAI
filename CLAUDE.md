@@ -584,6 +584,18 @@ CREATE TABLE system_config (
 
 ## 启动项目命令
 
+### 方法一：使用批处理脚本（推荐）
+```bash
+# 1. 启动后端（双击或运行）
+start-backend.bat
+# 访问: http://localhost:8001
+
+# 2. 启动前端（双击或运行）
+start-frontend.bat
+# 访问: http://localhost:3000
+```
+
+### 方法二：手动启动
 ```bash
 # 后端启动
 cd backend
@@ -591,7 +603,7 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 python main.py
-# 访问: http://localhost:8000
+# 访问: http://localhost:8001
 
 # 前端启动
 cd frontend/crewai-frontend
@@ -599,6 +611,13 @@ npm install
 npm run dev
 # 访问: http://localhost:3000
 ```
+
+## 接口测试
+后端启动后，可以通过以下方式测试接口：
+- 健康检查: http://localhost:8001/health
+- API文档: http://localhost:8001/docs
+- 系统状态: http://localhost:8001/api/v1/system/status
+- 模型配置: http://localhost:8001/api/v1/config/models
 
 ---
 

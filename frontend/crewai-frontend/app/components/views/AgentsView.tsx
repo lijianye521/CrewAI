@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Button, Table, Space, message, Tag, Card, Typography, Descriptions, Row, Col } from 'antd';
+import { Button, Table, Space, App, Tag, Card, Typography, Descriptions, Row, Col } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import CreateAgentForm from '@/app/agents/components/CreateAgentForm';
@@ -43,6 +43,7 @@ interface AgentsViewProps {
 }
 
 export default function AgentsView({ subView }: AgentsViewProps) {
+  const { message } = App.useApp();
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState<AgentConfig | null>(null);

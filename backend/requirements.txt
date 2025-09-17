@@ -8,3 +8,4 @@ celery==5.5.3
 websockets==13.1
 python-multipart==0.0.20
 pydantic==2.10.6
+aiohttp==3.10.11

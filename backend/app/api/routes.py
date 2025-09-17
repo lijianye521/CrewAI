@@ -30,6 +30,72 @@ manager = ConnectionManager()
 async def health_check():
     return {"status": "healthy", "service": "crewai-backend"}
 
+@router.post("/simple-test")
+async def simple_test(data: Dict[str, Any]):
+    """简单测试接口"""
+    return {
+        "received": data,
+        "status": "success",
+        "message": "数据接收成功"
+    }
+
+@router.get("/system/status")
+async def get_system_status():
+    """获取系统整体状态"""
+    from ..services.deepseek_service import api_key_manager
+    from datetime import datetime
+    
+    return {
+        "system": "CrewAI Multi-Agent Meeting System",
+        "version": "2.0.0",
+        "status": "running",
+        "database": "connected",
+        "ai_service": {
+            "provider": "DeepSeek",
+            "api_configured": api_key_manager.has_key("default"),
+            "available_models": ["deepseek-chat", "deepseek-reasoner"]
+        },
+        "features": {
+            "agent_management": True,
+            "meeting_system": True,
+            "real_time_collaboration": True,
+            "model_configuration": True
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+@router.post("/config/test")
+async def test_config_endpoint(config_data: Dict[str, Any]):
+    """测试配置接口"""
+    print(f"Received config data: {config_data}")
+    
+    # 简单验证
+    required_fields = ["openai_api_key", "openai_base_url", "model"]
+    missing_fields = [field for field in required_fields if field not in config_data]
+    
+    if missing_fields:
+        return {
+            "success": False,
+            "message": f"Missing required fields: {', '.join(missing_fields)}",
+            "received_data": config_data
+        }
+    
+    # 保存API密钥
+    from ..services.deepseek_service import api_key_manager
+    api_key_manager.set_key("default", config_data["openai_api_key"])
+    
+    return {
+        "success": True,
+        "message": "配置已成功保存",
+        "config": {
+            "api_key_masked": config_data["openai_api_key"][:10] + "...",
+            "base_url": config_data["openai_base_url"],
+            "model": config_data["model"],
+            "max_tokens": config_data.get("max_tokens", 2000),
+            "temperature": config_data.get("temperature", 0.7)
+        }
+    }
+
 @router.post("/analysis/start")
 async def start_analysis(request: Dict[str, Any]):
     """

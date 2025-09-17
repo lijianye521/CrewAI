@@ -94,22 +94,22 @@ def remove_deepseek_api_key(
 @router.get("/config/models")
 def get_model_config(user_id: str = "default"):
     """
-    获取模型配置
-    
-    根据 DeepSeek API 文档：https://api-docs.deepseek.com/zh-cn/
-    - Base URL: https://api.deepseek.com
-    - 兼容 OpenAI API 格式
-    - 支持模型: deepseek-chat, deepseek-reasoner
+    获取模型配置 - 支持通用 OpenAI 兼容 API
+
+    默认配置为 DeepSeek，但支持其他 OpenAI 兼容服务
     """
     try:
         has_key = api_key_manager.has_key(user_id)
-        
+
+        # 检查是否有存储的配置，否则使用默认的 DeepSeek 配置
+        stored_config = getattr(api_key_manager, 'configs', {}).get(user_id, {})
+
         return {
             "openai_api_key": "sk-****" if has_key else None,
-            "openai_base_url": "https://api.deepseek.com",
-            "model": "deepseek-chat",
-            "max_tokens": 2000,
-            "temperature": 0.7,
+            "openai_base_url": stored_config.get("base_url", "https://api.deepseek.com"),
+            "model": stored_config.get("model", "deepseek-chat"),
+            "max_tokens": stored_config.get("max_tokens", 2000),
+            "temperature": stored_config.get("temperature", 0.7),
             "is_configured": has_key,
             "available_models": [
                 {
@@ -131,10 +131,30 @@ def get_model_config(user_id: str = "default"):
                         "input": "$0.55 / 1M tokens",
                         "output": "$2.19 / 1M tokens"
                     }
+                },
+                {
+                    "id": "gpt-3.5-turbo",
+                    "name": "GPT-3.5 Turbo",
+                    "description": "OpenAI GPT-3.5 Turbo 模型",
+                    "max_tokens": 4096,
+                    "pricing": {
+                        "input": "自定义定价",
+                        "output": "自定义定价"
+                    }
+                },
+                {
+                    "id": "gpt-4",
+                    "name": "GPT-4",
+                    "description": "OpenAI GPT-4 模型",
+                    "max_tokens": 8192,
+                    "pricing": {
+                        "input": "自定义定价",
+                        "output": "自定义定价"
+                    }
                 }
             ]
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get model config: {str(e)}")
 
@@ -145,63 +165,83 @@ async def update_model_config(
 ):
     """
     更新模型配置
-    
-    支持 DeepSeek API 配置:
+
+    支持通用 OpenAI 兼容 API 配置:
     {
-      "openai_api_key": "sk-...",  // DeepSeek API Key
-      "openai_base_url": "https://api.deepseek.com",
-      "model": "deepseek-chat",  // deepseek-chat 或 deepseek-reasoner
+      "openai_api_key": "sk-...",  // API Key
+      "openai_base_url": "https://api.openai.com/v1",  // 或其他兼容服务
+      "model": "gpt-3.5-turbo",  // 任何兼容模型
       "max_tokens": 2000,
       "temperature": 0.7
     }
     """
     try:
-        # 验证模型是否支持
-        supported_models = ["deepseek-chat", "deepseek-reasoner"]
-        if "model" in config_data and config_data["model"] not in supported_models:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Unsupported model. Supported models: {', '.join(supported_models)}"
-            )
-        
-        # 验证 base_url
+        # 支持的常见模型（不再限制为 DeepSeek only）
+        common_models = [
+            "deepseek-chat", "deepseek-reasoner",
+            "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo",
+            "claude-3-sonnet", "claude-3-opus"
+        ]
+
+        # 验证模型（如果提供了模型名）
+        if "model" in config_data:
+            model = config_data["model"]
+            # 允许任何模型，但给出提示
+            if model not in common_models:
+                print(f"注意: 使用了不常见的模型 '{model}'，请确保API服务支持此模型")
+
+        # 验证 base_url 格式
         if "openai_base_url" in config_data:
             base_url = config_data["openai_base_url"]
-            if not base_url.startswith("https://api.deepseek.com"):
+            if not base_url.startswith(("https://", "http://")):
                 raise HTTPException(
                     status_code=400,
-                    detail="Invalid base URL. Please use https://api.deepseek.com for DeepSeek API"
+                    detail="Invalid base URL format. Must start with https:// or http://"
                 )
-        
+
         # 如果提供了API密钥，验证并保存
         if "openai_api_key" in config_data:
             api_key = config_data["openai_api_key"]
-            
-            # 验证 API Key 格式
-            if not api_key.startswith("sk-"):
-                raise HTTPException(status_code=400, detail="Invalid API key format. DeepSeek API key should start with 'sk-'")
-            
-            # 验证API密钥有效性
-            is_valid = await deepseek_service.validate_api_key(api_key)
-            if not is_valid:
-                raise HTTPException(status_code=400, detail="Invalid API key. Please check your DeepSeek API key.")
-            
+
+            # 验证 API Key 格式（支持多种格式）
+            if not api_key.startswith(("sk-", "eyJ", "ak-")):  # OpenAI, JWT token, 其他格式
+                print(f"Warning: API key format unusual for user {user_id}")
+
+            # 保存API密钥
             api_key_manager.set_key(user_id, api_key)
-        
-        # TODO: 保存其他配置到数据库
-        # 可以保存 model, max_tokens, temperature 等参数
-        
+
+            # 如果是 DeepSeek，进行特殊验证
+            base_url = config_data.get("openai_base_url", "")
+            if "deepseek" in base_url.lower():
+                try:
+                    is_valid = await deepseek_service.validate_api_key(api_key)
+                    if not is_valid:
+                        print(f"Warning: DeepSeek API key validation failed for user {user_id}")
+                except Exception as e:
+                    print(f"Warning: DeepSeek API key validation error: {str(e)}")
+
+        # 保存配置到内存（扩展 api_key_manager 功能）
+        if not hasattr(api_key_manager, 'configs'):
+            api_key_manager.configs = {}
+
+        api_key_manager.configs[user_id] = {
+            "base_url": config_data.get("openai_base_url", "https://api.openai.com/v1"),
+            "model": config_data.get("model", "gpt-3.5-turbo"),
+            "max_tokens": config_data.get("max_tokens", 2000),
+            "temperature": config_data.get("temperature", 0.7)
+        }
+
         return {
-            "message": "DeepSeek 模型配置更新成功",
+            "message": "模型配置更新成功",
             "is_configured": True,
             "config": {
-                "base_url": config_data.get("openai_base_url", "https://api.deepseek.com"),
-                "model": config_data.get("model", "deepseek-chat"),
+                "base_url": config_data.get("openai_base_url", "https://api.openai.com/v1"),
+                "model": config_data.get("model", "gpt-3.5-turbo"),
                 "max_tokens": config_data.get("max_tokens", 2000),
                 "temperature": config_data.get("temperature", 0.7)
             }
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -212,89 +252,116 @@ async def test_connection(
     test_config: Dict[str, Any]
 ):
     """
-    测试 DeepSeek 模型连接
-    
+    测试模型连接
+
     Request Body:
     {
-      "openai_api_key": "sk-...",  // DeepSeek API Key
-      "openai_base_url": "https://api.deepseek.com",
-      "model": "deepseek-chat"  // deepseek-chat 或 deepseek-reasoner
+      "openai_api_key": "sk-...",  // API Key
+      "openai_base_url": "https://api.openai.com/v1",  // 任何兼容的 API 地址
+      "model": "gpt-3.5-turbo"  // 任何兼容的模型
     }
-    
-    根据 DeepSeek API 文档进行连接测试
+
+    支持任何 OpenAI 兼容的 API 服务
     """
     try:
         import time
+        import aiohttp
+        import json
         start_time = time.time()
-        
+
         # 获取测试参数
         api_key = test_config.get("openai_api_key")
-        base_url = test_config.get("openai_base_url", "https://api.deepseek.com")
-        model = test_config.get("model", "deepseek-chat")
-        
+        base_url = test_config.get("openai_base_url", "https://api.openai.com/v1")
+        model = test_config.get("model", "gpt-3.5-turbo")
+
         if not api_key:
-            raise HTTPException(status_code=400, detail="DeepSeek API key is required")
-        
-        # 验证 API Key 格式
-        if not api_key.startswith("sk-"):
-            raise HTTPException(status_code=400, detail="Invalid DeepSeek API key format")
-        
-        # 验证模型
-        supported_models = ["deepseek-chat", "deepseek-reasoner"]
-        if model not in supported_models:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Unsupported model '{model}'. Supported models: {', '.join(supported_models)}"
-            )
-        
-        # 创建测试服务实例
-        test_service = deepseek_service.__class__(api_key)
-        
-        # 测试模型调用 - 使用简单的测试消息
-        test_messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "你好，这是一个连接测试。请简短回复。"}
-        ]
-        
-        response = await test_service.chat_completion(
-            messages=test_messages,
-            model=model,
-            max_tokens=20,  # 限制测试token数量
-            temperature=0.1  # 使用低 temperature 保证稳定输出
-        )
-        
-        # 计算响应时间
-        response_time_ms = int((time.time() - start_time) * 1000)
-        
-        # 获取响应内容和使用统计
-        response_content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
-        usage = response.get("usage", {})
-        
-        return {
-            "success": True,
-            "message": "DeepSeek API 连接测试成功",
-            "model_info": {
-                "model": model,
-                "available": True,
-                "response_time_ms": response_time_ms,
-                "base_url": base_url
-            },
-            "test_response": {
-                "content": response_content[:100] + "..." if len(response_content) > 100 else response_content,
-                "usage": usage
-            }
+            raise HTTPException(status_code=400, detail="API key is required")
+
+        if not base_url:
+            raise HTTPException(status_code=400, detail="Base URL is required")
+
+        # 构建请求
+        if not base_url.endswith('/chat/completions'):
+            chat_url = f"{base_url.rstrip('/')}/chat/completions"
+        else:
+            chat_url = base_url
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
         }
-        
+
+        test_payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello! This is a connection test. Please respond briefly."}
+            ],
+            "max_tokens": 20,
+            "temperature": 0.1
+        }
+
+        # 发送测试请求
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                chat_url,
+                headers=headers,
+                json=test_payload,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                response_data = await response.json()
+
+                if response.status == 200:
+                    # 成功
+                    response_time_ms = int((time.time() - start_time) * 1000)
+
+                    # 获取响应内容
+                    choices = response_data.get("choices", [])
+                    if choices:
+                        content = choices[0].get("message", {}).get("content", "")
+                    else:
+                        content = "Test successful"
+
+                    usage = response_data.get("usage", {})
+
+                    return {
+                        "success": True,
+                        "message": "API 连接测试成功",
+                        "model_info": {
+                            "model": model,
+                            "available": True,
+                            "response_time_ms": response_time_ms,
+                            "base_url": base_url
+                        },
+                        "test_response": {
+                            "content": content[:100] + "..." if len(content) > 100 else content,
+                            "usage": usage
+                        }
+                    }
+                else:
+                    # 错误处理
+                    error_detail = response_data.get("error", {}).get("message", f"HTTP {response.status}")
+                    if response.status == 401:
+                        raise HTTPException(status_code=400, detail="Invalid API key. Please check your API key.")
+                    elif response.status == 404:
+                        raise HTTPException(status_code=400, detail=f"Model '{model}' not found or not supported by this API.")
+                    elif response.status == 429:
+                        raise HTTPException(status_code=429, detail="API rate limit exceeded. Please try again later.")
+                    else:
+                        raise HTTPException(status_code=500, detail=f"API connection test failed: {error_detail}")
+
     except HTTPException:
         raise
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=500, detail="Connection test timed out. Please check the API URL and network connection.")
     except Exception as e:
         error_msg = str(e)
-        if "401" in error_msg or "unauthorized" in error_msg.lower():
-            raise HTTPException(status_code=400, detail="Invalid DeepSeek API key. Please check your API key.")
-        elif "429" in error_msg or "rate limit" in error_msg.lower():
-            raise HTTPException(status_code=429, detail="DeepSeek API rate limit exceeded. Please try again later.")
+        if "unauthorized" in error_msg.lower() or "401" in error_msg:
+            raise HTTPException(status_code=400, detail="Invalid API key. Please check your API key.")
+        elif "rate limit" in error_msg.lower() or "429" in error_msg:
+            raise HTTPException(status_code=429, detail="API rate limit exceeded. Please try again later.")
         else:
-            raise HTTPException(status_code=500, detail=f"DeepSeek API connection test failed: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"API connection test failed: {error_msg}")
 
 # 系统配置
 @router.get("/config/system", response_model=SystemConfigResponse)

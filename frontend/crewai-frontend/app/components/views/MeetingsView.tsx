@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Button, Table, Space, message, Tag, Card, Typography, Badge, Tooltip, Row, Col } from 'antd';
+import { Button, Table, Space, App, Tag, Card, Typography, Badge, Tooltip, Row, Col } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
@@ -52,6 +52,7 @@ interface MeetingsViewProps {
 }
 
 export default function MeetingsView({ subView }: MeetingsViewProps) {
+  const { message } = App.useApp();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);

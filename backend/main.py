@@ -28,8 +28,9 @@ app.add_middleware(
         "http://localhost:3001",  # 备用端口
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # 数据库初始化事件
@@ -77,8 +78,9 @@ async def health_check(db: Session = Depends(get_database_session)):
     """系统健康检查"""
     try:
         # 检查数据库连接
-        db.execute("SELECT 1")
-        
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
+
         return {
             "status": "healthy",
             "version": "2.0.0",
@@ -87,11 +89,11 @@ async def health_check(db: Session = Depends(get_database_session)):
         }
     except Exception as e:
         return {
-            "status": "unhealthy", 
+            "status": "unhealthy",
             "error": str(e),
             "timestamp": "2024-01-01T00:00:00Z"
         }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
