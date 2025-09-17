@@ -65,7 +65,7 @@ export default function MeetingsView({ subView }: MeetingsViewProps) {
   const fetchMeetings = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8000/api/v1/meetings');
+      const response = await fetch('http://localhost:8001/api/v1/meetings');
       if (response.ok) {
         const data = await response.json();
         setMeetings(data);
@@ -81,7 +81,7 @@ export default function MeetingsView({ subView }: MeetingsViewProps) {
 
   const handleDelete = async (id: number) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/meetings/${id}`, {
+      const response = await fetch(`http://localhost:8001/api/v1/meetings/${id}`, {
         method: 'DELETE',
       });
       if (response.ok) {
@@ -97,7 +97,7 @@ export default function MeetingsView({ subView }: MeetingsViewProps) {
 
   const handleStatusChange = async (id: number, newStatus: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/meetings/${id}/status`, {
+      const response = await fetch(`http://localhost:8001/api/v1/meetings/${id}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

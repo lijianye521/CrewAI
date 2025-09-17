@@ -171,7 +171,7 @@ export default function CreateAgentForm({ onSuccess, initialData, isEdit = false
         is_active: true
       };
 
-      const url = isEdit && initialData ? `http://localhost:8000/api/v1/agents/${initialData.id}` : 'http://localhost:8000/api/v1/agents';
+      const url = isEdit && initialData ? `http://localhost:8001/api/v1/agents/${initialData.id}` : 'http://localhost:8001/api/v1/agents';
       const method = isEdit ? 'PUT' : 'POST';
 
       const response = await fetch(url, {

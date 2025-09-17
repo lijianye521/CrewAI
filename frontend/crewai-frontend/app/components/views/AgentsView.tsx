@@ -56,7 +56,7 @@ export default function AgentsView({ subView }: AgentsViewProps) {
   const fetchAgents = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8000/api/v1/agents');
+      const response = await fetch('http://localhost:8001/api/v1/agents');
       if (response.ok) {
         const data = await response.json();
         setAgents(data);
@@ -72,7 +72,7 @@ export default function AgentsView({ subView }: AgentsViewProps) {
 
   const handleDelete = async (id: number) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/agents/${id}`, {
+      const response = await fetch(`http://localhost:8001/api/v1/agents/${id}`, {
         method: 'DELETE',
       });
       if (response.ok) {

@@ -222,7 +222,7 @@ export default function ConfigView() {
             </p>
             <ul className="text-left ml-6">
               <li>后端服务是否已启动 (python main.py)</li>
-              <li>服务地址是否正确 (默认: http://localhost:8000)</li>
+              <li>服务地址是否正确 (默认: http://localhost:8001)</li>
               <li>防火墙是否阻止了连接</li>
               <li>网络连接是否正常</li>
             </ul>

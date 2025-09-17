@@ -88,7 +88,7 @@ export default function MeetingHistoryPage() {
   const fetchHistoricalMeetings = async () => {
     try {
       setLoading(true);
-      let url = 'http://localhost:8000/api/v1/meetings?status=completed';
+      let url = 'http://localhost:8001/api/v1/meetings?status=completed';
       
       // 添加筛选参数
       if (statusFilter) {
@@ -128,7 +128,7 @@ export default function MeetingHistoryPage() {
 
   const fetchMeetingMessages = async (meetingId: number) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/meetings/${meetingId}/messages`);
+      const response = await fetch(`http://localhost:8001/api/v1/meetings/${meetingId}/messages`);
       if (response.ok) {
         const data = await response.json();
         setMeetingMessages(data);
@@ -188,7 +188,7 @@ export default function MeetingHistoryPage() {
 
   const downloadMeetingReport = async (meetingId: number) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/meetings/${meetingId}/replay`);
+      const response = await fetch(`http://localhost:8001/api/v1/meetings/${meetingId}/replay`);
       if (response.ok) {
         const data = await response.json();
         
