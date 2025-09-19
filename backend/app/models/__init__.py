@@ -174,6 +174,54 @@ def init_sample_data(db: Session):
     db.commit()
     print(f"Created {len(sample_agents)} sample agents successfully")
 
+    # 创建示例会议
+    sample_meetings = [
+        Meeting(
+            title="产品功能规划讨论",
+            description="讨论下一季度的产品功能开发计划",
+            topic="产品规划",
+            status=MeetingStatus.DRAFT,
+            meeting_rules={
+                "max_participants": 5,
+                "max_duration_minutes": 60,
+                "speaking_time_limit": 120,
+                "discussion_rounds": 3
+            },
+            discussion_config={
+                "discussion_topic": "Q2产品功能规划",
+                "context_description": "基于用户反馈和市场需求，规划下季度重点功能",
+                "expected_outcomes": ["确定开发优先级", "制定时间计划", "分配资源"],
+                "discussion_style": "结构化讨论"
+            },
+            created_by="system"
+        ),
+        Meeting(
+            title="技术架构评审",
+            description="新系统架构方案的技术评审会议",
+            topic="技术架构",
+            status=MeetingStatus.COMPLETED,
+            meeting_rules={
+                "max_participants": 4,
+                "max_duration_minutes": 90,
+                "speaking_time_limit": 180,
+                "discussion_rounds": 2
+            },
+            discussion_config={
+                "discussion_topic": "微服务架构升级方案",
+                "context_description": "从单体架构向微服务架构迁移的技术评估",
+                "expected_outcomes": ["技术方案确认", "风险评估", "实施计划"],
+                "discussion_style": "技术深度讨论"
+            },
+            created_by="system"
+        )
+    ]
+
+    for meeting in sample_meetings:
+        db.add(meeting)
+
+    db.commit()
+    print(f"Created {len(sample_meetings)} sample meetings successfully")
+
 # 导出所有模型和工具函数
 __all__ = [
     # 基类

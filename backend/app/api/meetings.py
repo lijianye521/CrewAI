@@ -269,7 +269,7 @@ def get_meeting_participants(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@router.patch("/meetings/{meeting_id}/status")
+@router.put("/meetings/{meeting_id}/status")
 async def update_meeting_status(
     meeting_id: int,
     status_update: Dict[str, str],

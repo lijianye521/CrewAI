@@ -7,6 +7,8 @@ from app.api.routes import router as legacy_router
 from app.api.agents import router as agents_router
 from app.api.meetings import router as meetings_router
 from app.api.config import router as config_router
+from app.api.test import router as test_router
+from app.api.meeting_stream import router as meeting_stream_router
 
 # 导入数据库相关
 from app.models import create_database, get_database_session, init_sample_data
@@ -51,6 +53,8 @@ app.include_router(legacy_router, prefix="/api/v1", tags=["Legacy"])
 app.include_router(agents_router, prefix="/api/v1", tags=["Agent管理"])
 app.include_router(meetings_router, prefix="/api/v1", tags=["会议管理"])
 app.include_router(config_router, prefix="/api/v1", tags=["系统配置"])
+app.include_router(test_router, prefix="/api/v1", tags=["测试接口"])
+app.include_router(meeting_stream_router, prefix="/api/v1", tags=["会议实时流"])
 
 @app.get("/", tags=["系统"])
 async def root():

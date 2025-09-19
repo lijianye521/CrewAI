@@ -9,7 +9,8 @@ class MeetingStatus(str, Enum):
     """会议状态枚举"""
     DRAFT = "draft"           # 草稿
     SCHEDULED = "scheduled"   # 已安排
-    IN_PROGRESS = "in_progress"  # 进行中
+    ACTIVE = "active"         # 进行中
+    PAUSED = "paused"         # 暂停
     COMPLETED = "completed"   # 已完成
     CANCELLED = "cancelled"   # 已取消
 

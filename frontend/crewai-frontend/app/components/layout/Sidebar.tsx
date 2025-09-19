@@ -84,7 +84,30 @@ export default function Sidebar({ collapsed = false, onToggle, currentView, curr
 
   const isActive = (key: string) => {
     if (key === currentView) return true;
-    if (key === currentSubView) return true;
+
+    // 检查子菜单项是否匹配
+    const getSubMenuKey = (view: string, subView: string) => {
+      if (view === 'agents') {
+        switch (subView) {
+          case 'list': return 'agentList';
+          case 'create': return 'createAgent';
+          case 'templates': return 'agentTemplates';
+          default: return 'agentList';
+        }
+      } else if (view === 'meetings') {
+        switch (subView) {
+          case 'list': return 'meetingList';
+          case 'create': return 'createMeeting';
+          case 'history': return 'meetingHistory';
+          default: return 'meetingList';
+        }
+      }
+      return '';
+    };
+
+    const expectedSubKey = getSubMenuKey(currentView, currentSubView);
+    if (key === expectedSubKey) return true;
+
     return false;
   };
 
@@ -145,11 +168,13 @@ export default function Sidebar({ collapsed = false, onToggle, currentView, curr
                       onClick={() => handleSubMenuClick(subItem)}
                       className={`w-full flex items-center px-3 py-1.5 rounded-md text-sm transition-colors ${
                         isActive(subItem.key)
-                          ? 'bg-gray-100 text-gray-900 font-medium'
+                          ? 'bg-gray-800 text-white font-medium shadow-sm'
                           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                       }`}
                     >
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full mr-3 flex-shrink-0"></span>
+                      <span className={`w-1.5 h-1.5 rounded-full mr-3 flex-shrink-0 ${
+                        isActive(subItem.key) ? 'bg-white' : 'bg-gray-400'
+                      }`}></span>
                       {subItem.label}
                     </button>
                   ))}

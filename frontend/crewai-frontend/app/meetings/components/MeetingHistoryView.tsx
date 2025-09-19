@@ -114,12 +114,24 @@ export default function MeetingHistoryView() {
           });
         }
 
-        setMeetings(data);
+        // 确保数据是数组格式
+        if (Array.isArray(data)) {
+          setMeetings(data);
+        } else if (data.data && Array.isArray(data.data)) {
+          // 如果后端返回的是分页格式 {data: [], total: 0, page: 1, limit: 10}
+          setMeetings(data.data);
+        } else {
+          // 如果数据格式不正确，设置为空数组
+          setMeetings([]);
+          console.warn('API返回的数据格式不正确:', data);
+        }
       } else {
         message.error('获取历史会议失败');
+        setMeetings([]); // 确保失败时也设置为空数组
       }
     } catch (error) {
       message.error('网络错误，请检查后端服务');
+      setMeetings([]); // 确保错误时也设置为空数组
     } finally {
       setLoading(false);
     }
@@ -412,7 +424,7 @@ export default function MeetingHistoryView() {
           <Card className="bg-white border-gray-200 text-center">
             <Statistic
               title="总消息数"
-              value={meetings.reduce((sum, m) => sum + m.messages_count, 0)}
+              value={Array.isArray(meetings) ? meetings.reduce((sum, m) => sum + m.messages_count, 0) : 0}
               valueStyle={{ color: '#52c41a' }}
             />
           </Card>
@@ -421,7 +433,7 @@ export default function MeetingHistoryView() {
           <Card className="bg-white border-gray-200 text-center">
             <Statistic
               title="总时长"
-              value={meetings.reduce((sum, m) => sum + m.duration_minutes, 0)}
+              value={Array.isArray(meetings) ? meetings.reduce((sum, m) => sum + m.duration_minutes, 0) : 0}
               suffix="分钟"
               valueStyle={{ color: '#fa8c16' }}
             />
@@ -431,7 +443,7 @@ export default function MeetingHistoryView() {
           <Card className="bg-white border-gray-200 text-center">
             <Statistic
               title="平均时长"
-              value={meetings.length ? Math.round(meetings.reduce((sum, m) => sum + m.duration_minutes, 0) / meetings.length) : 0}
+              value={Array.isArray(meetings) && meetings.length ? Math.round(meetings.reduce((sum, m) => sum + m.duration_minutes, 0) / meetings.length) : 0}
               suffix="分钟"
               valueStyle={{ color: '#722ed1' }}
             />
@@ -441,7 +453,7 @@ export default function MeetingHistoryView() {
 
       <Table
         columns={columns}
-        dataSource={meetings}
+        dataSource={Array.isArray(meetings) ? meetings : []}
         loading={loading}
         rowKey="id"
         pagination={{

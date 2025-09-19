@@ -266,9 +266,7 @@ class MeetingService:
     
     def get_meeting_participants(self, meeting_id: int) -> List[MeetingParticipant]:
         """获取会议参与者列表"""
-        return self.db.query(MeetingParticipant).options(
-            joinedload(MeetingParticipant.agent_id)
-        ).filter(
+        return self.db.query(MeetingParticipant).filter(
             MeetingParticipant.meeting_id == meeting_id,
             MeetingParticipant.is_active == True
         ).all()
@@ -311,7 +309,7 @@ class MeetingService:
                 raise ValueError(f"Meeting {meeting_id} has no participants")
             
             # 更新会议状态
-            meeting.status = MeetingStatus.IN_PROGRESS
+            meeting.status = MeetingStatus.ACTIVE
             meeting.actual_start = datetime.utcnow()
             
             self.db.commit()
@@ -332,7 +330,7 @@ class MeetingService:
             if not meeting:
                 return None
             
-            if meeting.status != MeetingStatus.IN_PROGRESS:
+            if meeting.status not in [MeetingStatus.ACTIVE, MeetingStatus.PAUSED]:
                 raise ValueError(f"Meeting {meeting_id} is not in progress")
             
             # 更新会议状态
