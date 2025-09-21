@@ -56,7 +56,11 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [visibleMessages, setVisibleMessages] = useState<Message[]>([]);
-  
+
+  // 打字机效果状态
+  const [typingMessages, setTypingMessages] = useState<Map<number, string>>(new Map());
+  const [isTyping, setIsTyping] = useState<Set<number>>(new Set());
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const playbackTimer = useRef<NodeJS.Timeout | null>(null);
@@ -216,6 +220,40 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
             message.success('会议对话已结束');
           } else if (data.type === 'heartbeat') {
             // 静默处理心跳，保持连接活跃
+          } else if (data.type === 'message_start') {
+            // 开始打字机效果
+            setIsTyping(prev => new Set([...prev, data.message_id]));
+            setTypingMessages(prev => new Map([...prev, [data.message_id, '']]));
+          } else if (data.type === 'message_typing') {
+            // 更新打字机内容
+            setTypingMessages(prev => new Map([...prev, [data.message_id, data.partial_content]]));
+          } else if (data.type === 'message_complete') {
+            // 完成打字机效果，添加到正式消息列表
+            const finalMessage = {
+              id: data.message_id,
+              agent_id: data.agent_id,
+              agent_name: agents.find(a => a.id === data.agent_id)?.name || `Agent ${data.agent_id}`,
+              content: data.final_content,
+              message_type: data.message_type,
+              created_at: data.timestamp,
+              sent_at: data.timestamp,
+              metadata: data.metadata
+            };
+
+            setMessages(prev => [...prev, finalMessage]);
+            setVisibleMessages(prev => [...prev, finalMessage]);
+
+            // 清除打字机状态
+            setIsTyping(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(data.message_id);
+              return newSet;
+            });
+            setTypingMessages(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(data.message_id);
+              return newMap;
+            });
           }
         } catch (error) {
           console.error('Error parsing SSE data:', error);
@@ -526,6 +564,40 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
             );
           })
         )}
+
+        {/* 显示正在打字的消息 */}
+        {Array.from(typingMessages.entries()).map(([messageId, content]) => {
+          const agent = agents.find(a => a.id === messageId); // messageId might relate to agent
+
+          return (
+            <div key={`typing-${messageId}`} className="flex space-x-3 opacity-80">
+              <Avatar
+                icon={<UserOutlined />}
+                className="bg-green-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-1">
+                  <span className="font-medium text-sm">
+                    正在输入...
+                  </span>
+                  <Tag color="processing" size="small">
+                    打字中
+                  </Tag>
+                  <span className="text-xs text-gray-500">
+                    {new Date().toLocaleTimeString()}
+                  </span>
+                </div>
+                <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                  <Text>
+                    {content}
+                    <span className="animate-pulse ml-1">|</span>
+                  </Text>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
         <div ref={messagesEndRef} />
       </div>
 

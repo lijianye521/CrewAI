@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 # 存储活跃的SSE连接
 active_streams: Dict[int, List[asyncio.Queue]] = {}
 
+# 存储正在进行的对话会议ID，防止重复启动
+active_conversations: set = set()
+
 class SSEConnectionManager:
     def __init__(self):
         self.connections: Dict[int, List[asyncio.Queue]] = {}
@@ -140,6 +143,13 @@ async def start_meeting_conversation(
 
     if meeting.status != 'active':
         raise HTTPException(status_code=400, detail="Meeting must be active to start conversation")
+
+    # 检查是否已经在进行对话
+    if meeting_id in active_conversations:
+        return {"message": "Meeting conversation already in progress", "meeting_id": meeting_id}
+
+    # 标记对话开始
+    active_conversations.add(meeting_id)
 
     # 在后台启动对话任务
     background_tasks.add_task(run_agent_conversation, meeting_id, db)
@@ -268,23 +278,15 @@ async def run_agent_conversation(meeting_id: int, db: Session):
                         db.commit()
                         db.refresh(new_message)
 
-                        # 通过SSE广播新消息 - 使用安全的序列化
-                        safe_message = {
-                            "id": new_message.id,
-                            "meeting_id": new_message.meeting_id,
-                            "agent_id": new_message.agent_id,
-                            "message_content": new_message.message_content,
-                            "message_type": new_message.message_type,
-                            "status": new_message.status,
-                            "created_at": new_message.created_at.isoformat() if new_message.created_at else None,
-                            "sent_at": new_message.sent_at.isoformat() if new_message.sent_at else None,
-                            "metadata": new_message.message_metadata
-                        }
-                        await sse_manager.broadcast_to_meeting(meeting_id, {
-                            "type": "new_message",
-                            "message": safe_message,
-                            "timestamp": datetime.utcnow().isoformat()
-                        })
+                        # 通过SSE广播打字机效果消息
+                        await broadcast_typewriter_message(
+                            meeting_id=meeting_id,
+                            message_id=new_message.id,
+                            agent_id=new_message.agent_id,
+                            content=new_message.message_content,
+                            message_type=new_message.message_type,
+                            metadata=new_message.message_metadata
+                        )
 
                         # 更新对话上下文
                         conversation_context += f"\n{agent.name}: {response['content']}"
@@ -312,6 +314,9 @@ async def run_agent_conversation(meeting_id: int, db: Session):
 
     except Exception as e:
         logger.error(f"Error in agent conversation for meeting {meeting_id}: {e}")
+    finally:
+        # 无论成功或失败，都要清除对话状态
+        active_conversations.discard(meeting_id)
 
 async def generate_agent_response(
     agent: AgentConfig,
@@ -393,3 +398,55 @@ async def generate_agent_response(
         logger.error(f"Error generating agent response: {e}")
 
     return None
+
+async def broadcast_typewriter_message(
+    meeting_id: int,
+    message_id: int,
+    agent_id: int,
+    content: str,
+    message_type: str,
+    metadata: dict
+):
+    """
+    实现打字机效果的消息广播
+    """
+    # 首先发送消息开始事件
+    await sse_manager.broadcast_to_meeting(meeting_id, {
+        "type": "message_start",
+        "message_id": message_id,
+        "agent_id": agent_id,
+        "message_type": message_type,
+        "timestamp": datetime.utcnow().isoformat()
+    })
+
+    # 逐字发送内容
+    accumulated_content = ""
+    typing_speed = 50  # 50ms per character for typewriter effect
+
+    for i, char in enumerate(content):
+        accumulated_content += char
+
+        # 发送当前累积的内容
+        await sse_manager.broadcast_to_meeting(meeting_id, {
+            "type": "message_typing",
+            "message_id": message_id,
+            "agent_id": agent_id,
+            "partial_content": accumulated_content,
+            "total_length": len(content),
+            "current_position": i + 1,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+        # 控制打字速度
+        await asyncio.sleep(typing_speed / 1000.0)
+
+    # 发送消息完成事件
+    await sse_manager.broadcast_to_meeting(meeting_id, {
+        "type": "message_complete",
+        "message_id": message_id,
+        "agent_id": agent_id,
+        "final_content": content,
+        "message_type": message_type,
+        "metadata": metadata,
+        "timestamp": datetime.utcnow().isoformat()
+    })
