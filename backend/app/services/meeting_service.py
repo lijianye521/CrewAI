@@ -530,14 +530,32 @@ class MeetingService:
                     "agent_info": participant_map.get(msg.agent_id, {}),
                     "content": msg.message_content,
                     "message_type": msg.message_type,
-                    "metadata": msg.metadata
+                    "metadata": msg.message_metadata or {}
                 }
                 replay_events.append(event)
             
+            # Safe meeting serialization to avoid circular references
+            safe_meeting = {
+                "id": meeting.id,
+                "title": meeting.title,
+                "description": meeting.description,
+                "status": meeting.status,
+                "topic": meeting.topic,
+                "meeting_rules": meeting.meeting_rules,
+                "discussion_config": meeting.discussion_config,
+                "scheduled_start": meeting.scheduled_start.isoformat() if hasattr(meeting, 'scheduled_start') and meeting.scheduled_start else None,
+                "actual_start": meeting.actual_start.isoformat() if hasattr(meeting, 'actual_start') and meeting.actual_start else None,
+                "actual_end": meeting.actual_end.isoformat() if hasattr(meeting, 'actual_end') and meeting.actual_end else None,
+                "created_at": meeting.created_at.isoformat() if meeting.created_at else None,
+                "updated_at": meeting.updated_at.isoformat() if meeting.updated_at else None
+            }
+
             return {
-                "meeting": meeting.to_dict(),
+                "meeting": safe_meeting,
                 "participants": participant_map,
-                "events": replay_events,
+                "timeline": replay_events,  # For test compatibility
+                "events": replay_events,    # Original structure
+                "messages": replay_events,  # Also for test compatibility
                 "duration": self._calculate_meeting_duration(meeting),
                 "statistics": {
                     "total_messages": len(messages),

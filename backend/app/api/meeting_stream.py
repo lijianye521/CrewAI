@@ -76,10 +76,22 @@ async def stream_meeting_messages(
             # 发送连接确认
             yield f"data: {json.dumps({'type': 'connected', 'meeting_id': meeting_id, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
 
-            # 发送现有消息
+            # 发送现有消息 - 使用安全的序列化方法避免循环引用
             existing_messages = meeting_service.get_meeting_messages(meeting_id, skip=0, limit=100)
             for msg in existing_messages:
-                yield f"data: {json.dumps({'type': 'existing_message', 'message': msg.to_dict()})}\n\n"
+                # 手动构建消息数据，避免循环引用
+                safe_message = {
+                    "id": msg.id,
+                    "meeting_id": msg.meeting_id,
+                    "agent_id": msg.agent_id,
+                    "message_content": msg.message_content,
+                    "message_type": msg.message_type,
+                    "status": msg.status,
+                    "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                    "sent_at": msg.sent_at.isoformat() if msg.sent_at else None,
+                    "metadata": msg.message_metadata
+                }
+                yield f"data: {json.dumps({'type': 'existing_message', 'message': safe_message})}\n\n"
 
             # 持续监听新消息
             while True:
@@ -194,17 +206,48 @@ async def run_agent_conversation(meeting_id: int, db: Session):
             conversation_context += f"背景: {meeting.discussion_config.get('context_description', '')}\n"
             conversation_context += f"期望结果: {', '.join(meeting.discussion_config.get('expected_outcomes', []))}\n"
 
-        logger.info(f"Starting conversation for meeting {meeting_id} with {len(agent_configs)} agents")
+        # 从会议配置中获取对话轮数，默认为3轮
+        max_rounds = 3
+        if meeting.meeting_rules and 'discussion_rounds' in meeting.meeting_rules:
+            max_rounds = meeting.meeting_rules['discussion_rounds']
 
-        for round_num in range(5):  # 最多5轮对话
-            for agent in agent_configs:
+        # 从会议配置中获取发言间隔时间，默认为3秒
+        speaking_interval = 3
+        if meeting.meeting_rules and 'speaking_time_limit' in meeting.meeting_rules:
+            # speaking_time_limit 是秒数，转换为合理的间隔时间
+            speaking_interval = min(max(meeting.meeting_rules['speaking_time_limit'] // 40, 2), 10)
+
+        logger.info(f"Starting conversation for meeting {meeting_id} with {len(agent_configs)} agents, {max_rounds} rounds, {speaking_interval}s intervals")
+
+        for round_num in range(max_rounds):
+            # 广播轮次开始信息
+            await sse_manager.broadcast_to_meeting(meeting_id, {
+                "type": "round_started",
+                "round_number": round_num + 1,
+                "total_rounds": max_rounds,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+            for agent_index, agent in enumerate(agent_configs):
                 try:
+                    # 广播智能体开始发言
+                    await sse_manager.broadcast_to_meeting(meeting_id, {
+                        "type": "agent_speaking",
+                        "agent_id": agent.id,
+                        "agent_name": agent.name,
+                        "round_number": round_num + 1,
+                        "agent_order": agent_index + 1,
+                        "total_agents": len(agent_configs),
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+
                     # 生成智能体的发言
                     response = await generate_agent_response(
                         agent=agent,
                         conversation_context=conversation_context,
                         meeting=meeting,
-                        existing_messages=meeting_service.get_meeting_messages(meeting_id, skip=0, limit=20)
+                        existing_messages=meeting_service.get_meeting_messages(meeting_id, skip=0, limit=20),
+                        db=db
                     )
 
                     if response:
@@ -212,12 +255,11 @@ async def run_agent_conversation(meeting_id: int, db: Session):
                         message_data = {
                             "meeting_id": meeting_id,
                             "agent_id": agent.id,
-                            "agent_name": agent.name,
                             "message_content": response["content"],
                             "message_type": response.get("type", "analysis"),
                             "status": "sent",
                             "sent_at": datetime.utcnow(),
-                            "metadata": response.get("metadata", {})
+                            "message_metadata": response.get("metadata", {})
                         }
 
                         # 这里需要直接创建数据库记录
@@ -226,10 +268,21 @@ async def run_agent_conversation(meeting_id: int, db: Session):
                         db.commit()
                         db.refresh(new_message)
 
-                        # 通过SSE广播新消息
+                        # 通过SSE广播新消息 - 使用安全的序列化
+                        safe_message = {
+                            "id": new_message.id,
+                            "meeting_id": new_message.meeting_id,
+                            "agent_id": new_message.agent_id,
+                            "message_content": new_message.message_content,
+                            "message_type": new_message.message_type,
+                            "status": new_message.status,
+                            "created_at": new_message.created_at.isoformat() if new_message.created_at else None,
+                            "sent_at": new_message.sent_at.isoformat() if new_message.sent_at else None,
+                            "metadata": new_message.message_metadata
+                        }
                         await sse_manager.broadcast_to_meeting(meeting_id, {
                             "type": "new_message",
-                            "message": new_message.to_dict(),
+                            "message": safe_message,
                             "timestamp": datetime.utcnow().isoformat()
                         })
 
@@ -238,8 +291,8 @@ async def run_agent_conversation(meeting_id: int, db: Session):
 
                         logger.info(f"Agent {agent.name} spoke in meeting {meeting_id}")
 
-                        # 等待一下，模拟真实对话节奏
-                        await asyncio.sleep(3)
+                        # 等待一下，模拟真实对话节奏 - 使用配置的间隔时间
+                        await asyncio.sleep(speaking_interval)
 
                 except Exception as e:
                     logger.error(f"Error generating response for agent {agent.name}: {e}")
@@ -264,17 +317,21 @@ async def generate_agent_response(
     agent: AgentConfig,
     conversation_context: str,
     meeting: Meeting,
-    existing_messages: List[MeetingMessage]
+    existing_messages: List[MeetingMessage],
+    db: Session
 ) -> Optional[Dict[str, Any]]:
     """
     生成智能体的响应
     """
     try:
-        # 构建提示词
-        recent_messages = "\n".join([
-            f"{msg.agent_name}: {msg.message_content}"
-            for msg in existing_messages[-5:]  # 最近5条消息
-        ])
+        # 构建提示词 - 需要通过agent_id获取agent名称
+        agent_service = AgentService(db)
+        recent_messages_list = []
+        for msg in existing_messages[-5:]:  # 最近5条消息
+            agent_config = agent_service.get_agent_by_id(msg.agent_id)
+            agent_name = agent_config.name if agent_config else f"Agent{msg.agent_id}"
+            recent_messages_list.append(f"{agent_name}: {msg.message_content}")
+        recent_messages = "\n".join(recent_messages_list)
 
         system_prompt = f"""你是{agent.name}，{agent.role}。
 

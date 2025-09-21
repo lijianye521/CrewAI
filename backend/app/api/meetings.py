@@ -406,8 +406,11 @@ def get_meeting_replay(
         replay_data = meeting_service.get_meeting_replay(meeting_id)
         if not replay_data:
             raise HTTPException(status_code=404, detail="Meeting not found or no replay data")
-        
-        return replay_data
+
+        # Use JSONResponse to avoid FastAPI automatic encoding which causes stack overflow
+        from fastapi.responses import JSONResponse
+        import json
+        return JSONResponse(content=replay_data)
     except HTTPException:
         raise
     except Exception as e:

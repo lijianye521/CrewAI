@@ -177,10 +177,9 @@ class MeetingSpeakingScheduler:
             message = MeetingMessage(
                 meeting_id=meeting_id,
                 agent_id=agent.config.id,
-                agent_name=agent.config.name,
-                content=response["content"],
+                message_content=response["content"],
                 message_type="response",
-                metadata=response.get("metadata", {})
+                message_metadata=response.get("metadata", {})
             )
             
             self.db.add(message)
@@ -449,10 +448,9 @@ class MeetingSpeakingScheduler:
                 summary_message = MeetingMessage(
                     meeting_id=meeting_id,
                     agent_id=None,
-                    agent_name="系统",
-                    content=f"轮次总结: {summary_content}",
+                    message_content=f"轮次总结: {summary_content}",
                     message_type="summary",
-                    metadata={"round": self.active_meetings[meeting_id]["current_round"]}
+                    message_metadata={"round": self.active_meetings[meeting_id]["current_round"]}
                 )
                 
                 self.db.add(summary_message)
@@ -498,10 +496,9 @@ class MeetingSpeakingScheduler:
                 summary_message = MeetingMessage(
                     meeting_id=meeting_id,
                     agent_id=None,
-                    agent_name="系统",
-                    content=f"会议总结: {summary_content}",
+                    message_content=f"会议总结: {summary_content}",
                     message_type="meeting_summary",
-                    metadata={
+                    message_metadata={
                         "total_messages": meeting_state["message_count"],
                         "duration_minutes": (datetime.utcnow() - meeting_state["start_time"]).total_seconds() / 60,
                         "participants": len(meeting_state["participants"])

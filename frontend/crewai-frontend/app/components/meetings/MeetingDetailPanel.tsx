@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Typography, Tag, Space, Button, Avatar, Spin, message, Divider, Timeline, Slider } from 'antd';
+import { Card, Typography, Tag, Space, Button, Avatar, Spin, App, Divider, Timeline, Slider } from 'antd';
 import { 
   UserOutlined, 
   PlayCircleOutlined, 
@@ -44,6 +44,7 @@ interface MeetingDetailPanelProps {
 }
 
 export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetailPanelProps) {
+  const { message } = App.useApp();
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
@@ -187,7 +188,7 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
 
       eventSource.onopen = () => {
         setIsConnected(true);
-        message.success('已连接到实时流');
+        // 连接成功消息将通过 'connected' 事件处理
       };
 
       eventSource.onmessage = (event) => {
@@ -198,10 +199,23 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
             const newMessage = normalizeMessage(data.message);
             setMessages(prev => [...prev, newMessage]);
             setVisibleMessages(prev => [...prev, newMessage]);
+          } else if (data.type === 'existing_message') {
+            const existingMessage = normalizeMessage(data.message);
+            setMessages(prev => [...prev, existingMessage]);
+            setVisibleMessages(prev => [...prev, existingMessage]);
           } else if (data.type === 'meeting_status') {
             setMeeting(prev => prev ? { ...prev, status: data.status } : null);
           } else if (data.type === 'connected') {
             setIsConnected(true);
+            message.success('已连接到实时流');
+          } else if (data.type === 'round_started') {
+            message.info(`第 ${data.round_number} 轮对话开始 (共 ${data.total_rounds} 轮)`);
+          } else if (data.type === 'agent_speaking') {
+            message.info(`${data.agent_name} 正在发言... (第 ${data.round_number} 轮，第 ${data.agent_order}/${data.total_agents} 位)`);
+          } else if (data.type === 'conversation_ended') {
+            message.success('会议对话已结束');
+          } else if (data.type === 'heartbeat') {
+            // 静默处理心跳，保持连接活跃
           }
         } catch (error) {
           console.error('Error parsing SSE data:', error);
@@ -211,7 +225,8 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
       eventSource.onerror = (error) => {
         console.error('SSE connection error:', error);
         setIsConnected(false);
-        
+        message.error('连接中断，尝试重新连接...');
+
         // 尝试重连
         setTimeout(() => {
           if (!eventSourceRef.current || eventSourceRef.current.readyState === EventSource.CLOSED) {
