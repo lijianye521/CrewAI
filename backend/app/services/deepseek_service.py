@@ -25,8 +25,8 @@ class DeepSeekService:
             logger.warning("DeepSeek API key not provided. Service will be limited.")
     
     async def chat_completion(
-        self, 
-        messages: List[Dict[str, str]], 
+        self,
+        messages: List[Dict[str, str]],
         model: str = "deepseek-chat",
         temperature: float = 0.7,
         max_tokens: int = 1000,
@@ -35,7 +35,7 @@ class DeepSeekService:
     ) -> Dict[str, Any]:
         """
         调用 DeepSeek Chat Completion API
-        
+
         Args:
             messages: 对话消息列表
             model: 模型名称
@@ -43,11 +43,19 @@ class DeepSeekService:
             max_tokens: 最大token数
             stream: 是否流式输出
             agent_config: Agent配置信息，用于个性化调整
-            
+
         Returns:
             API响应结果
         """
-        if not self.api_key:
+        # 动态获取API密钥，如果当前实例没有密钥的话
+        api_key = self.api_key
+        if not api_key:
+            # 尝试从全局API密钥管理器获取
+            global api_key_manager
+            if api_key_manager and api_key_manager.has_key("default"):
+                api_key = api_key_manager.get_key("default")
+
+        if not api_key:
             raise ValueError("DeepSeek API key is required")
         
         # 根据Agent配置调整参数
@@ -56,7 +64,7 @@ class DeepSeekService:
             messages = self._customize_messages_for_agent(messages, agent_config)
         
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
         
