@@ -30,6 +30,7 @@ import {
   FilterOutlined,
   DownloadOutlined
 } from '@ant-design/icons';
+import { useRouter } from 'next/navigation';
 import type { ColumnsType } from 'antd/es/table';
 import { RangePickerProps } from 'antd/es/date-picker';
 
@@ -66,6 +67,7 @@ interface MeetingMessage {
 }
 
 export default function MeetingHistoryView() {
+  const router = useRouter();
   const [meetings, setMeetings] = useState<HistoricalMeeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMeeting, setSelectedMeeting] = useState<HistoricalMeeting | null>(null);
@@ -165,6 +167,10 @@ export default function MeetingHistoryView() {
     setMeetingMessages(messages);
     setCurrentReplayIndex(0);
     setReplayModalVisible(true);
+  };
+
+  const handleWatchReplay = (meetingId: number) => {
+    router.push(`/meetings/replay/${meetingId}`);
   };
 
   const startReplay = () => {
@@ -335,11 +341,19 @@ export default function MeetingHistoryView() {
         <Space size="small">
           <Button
             type="link"
+            icon={<EyeOutlined />}
+            onClick={() => handleWatchReplay(record.id)}
+            size="small"
+          >
+            观看
+          </Button>
+          <Button
+            type="link"
             icon={<PlayCircleOutlined />}
             onClick={() => handleStartReplay(record)}
             size="small"
           >
-            回放
+            快速回放
           </Button>
           <Button
             type="link"
