@@ -146,7 +146,7 @@ class ConfigurableAgent:
         try:
             # 更新内部对话历史
             if conversation_history:
-                self.conversation_history = conversation_history[-10:]  # 保留最近10条
+                self.conversation_history = conversation_history[-100:]  # 保留最近100条
             
             # 使用DeepSeek服务生成响应
             response = await deepseek_service.generate_agent_response(
@@ -207,7 +207,7 @@ class ConfigurableAgent:
         try:
             # 更新对话历史
             if conversation_history:
-                self.conversation_history = conversation_history[-10:]
+                self.conversation_history = conversation_history[-100:]
             
             # 使用DeepSeek服务的流式生成
             async for chunk in deepseek_service.stream_agent_response(

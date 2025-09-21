@@ -371,7 +371,7 @@ class MeetingService:
                 raise ValueError(f"Meeting {meeting_id} not found")
             
             # 获取对话历史
-            recent_messages = self.get_meeting_messages(meeting_id, limit=10)
+            recent_messages = self.get_meeting_messages(meeting_id, limit=100)
             conversation_history = []
             for msg in recent_messages:
                 msg_agent = self.agent_service.get_agent_by_id(msg.agent_id)

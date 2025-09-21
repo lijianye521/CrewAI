@@ -122,7 +122,7 @@ class DeepSeekService:
         
         # 添加对话历史
         if conversation_history:
-            messages.extend(conversation_history[-10:])  # 只保留最近10条
+            messages.extend(conversation_history[-100:])  # 只保留最近100条
         
         # 添加当前上下文
         messages.append({"role": "user", "content": context})
@@ -177,7 +177,7 @@ class DeepSeekService:
         messages = [{"role": "system", "content": system_prompt}]
         
         if conversation_history:
-            messages.extend(conversation_history[-10:])
+            messages.extend(conversation_history[-100:])
         
         messages.append({"role": "user", "content": context})
         

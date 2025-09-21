@@ -161,7 +161,7 @@ class MeetingSpeakingScheduler:
             # 构建对话上下文
             context = self._build_current_context(meeting_id)
             meeting_context = self._build_meeting_context(meeting_id)
-            conversation_history = self._get_recent_messages(meeting_id, limit=10)
+            conversation_history = self._get_recent_messages(meeting_id, limit=100)
             
             # 更新当前发言者
             meeting_state["current_speaker"] = agent.config.id
@@ -395,7 +395,7 @@ class MeetingSpeakingScheduler:
             "expected_outcomes": meeting.discussion_config.get("expected_outcomes", [])
         }
     
-    def _get_recent_messages(self, meeting_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+    def _get_recent_messages(self, meeting_id: int, limit: int = 100) -> List[Dict[str, Any]]:
         """获取最近的消息"""
         messages = self.db.query(MeetingMessage).filter(
             MeetingMessage.meeting_id == meeting_id
@@ -425,7 +425,7 @@ class MeetingSpeakingScheduler:
     async def _generate_round_summary(self, meeting_id: int):
         """生成轮次总结"""
         try:
-            recent_messages = self._get_recent_messages(meeting_id, limit=10)
+            recent_messages = self._get_recent_messages(meeting_id, limit=100)
             if not recent_messages:
                 return
             
