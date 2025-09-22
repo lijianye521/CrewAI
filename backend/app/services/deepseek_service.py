@@ -92,6 +92,10 @@ class DeepSeekService:
         
         except Exception as e:
             logger.error(f"DeepSeek API call failed: {str(e)}")
+            # 如果是网络连接问题，返回None而不是抛出异常，让调用方使用备用方案
+            if "Cannot connect to host" in str(e) or "ClientConnectorError" in str(e):
+                logger.warning("DeepSeek API network connection failed, falling back to template")
+                return None
             raise
     
     async def generate_agent_response(

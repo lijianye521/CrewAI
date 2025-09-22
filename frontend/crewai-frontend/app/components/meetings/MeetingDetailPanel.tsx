@@ -2,15 +2,16 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Typography, Tag, Space, Button, Avatar, Spin, App, Divider, Timeline, Slider } from 'antd';
-import { 
-  UserOutlined, 
-  PlayCircleOutlined, 
+import {
+  UserOutlined,
+  PlayCircleOutlined,
   PauseCircleOutlined,
   StepBackwardOutlined,
   StepForwardOutlined,
   FastBackwardOutlined,
   FastForwardOutlined,
-  CloseOutlined
+  CloseOutlined,
+  ReloadOutlined
 } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
@@ -187,6 +188,12 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
 
   const connectToSSE = () => {
     try {
+      // 如果已有连接，先关闭
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+
       const eventSource = new EventSource(`http://localhost:8001/api/v1/meetings/${meetingId}/stream`);
       eventSourceRef.current = eventSource;
 
@@ -198,12 +205,15 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          console.log('SSE received:', data); // 调试日志
 
           if (data.type === 'new_message') {
+            // 处理完整的新消息（非打字机效果）
             const newMessage = normalizeMessage(data.message);
             setMessages(prev => [...prev, newMessage]);
             setVisibleMessages(prev => [...prev, newMessage]);
           } else if (data.type === 'existing_message') {
+            // 处理现有消息
             const existingMessage = normalizeMessage(data.message);
             setMessages(prev => [...prev, existingMessage]);
             setVisibleMessages(prev => [...prev, existingMessage]);
@@ -211,13 +221,13 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
             setMeeting(prev => prev ? { ...prev, status: data.status } : null);
           } else if (data.type === 'connected') {
             setIsConnected(true);
-            message.success('已连接到实时流');
+            // 静默连接，不显示提示
           } else if (data.type === 'round_started') {
-            message.info(`第 ${data.round_number} 轮对话开始 (共 ${data.total_rounds} 轮)`);
+            // 静默处理轮次开始
           } else if (data.type === 'agent_speaking') {
-            message.info(`${data.agent_name} 正在发言... (第 ${data.round_number} 轮，第 ${data.agent_order}/${data.total_agents} 位)`);
+            // 静默处理智能体发言
           } else if (data.type === 'conversation_ended') {
-            message.success('会议对话已结束');
+            // 静默处理会话结束
           } else if (data.type === 'heartbeat') {
             // 静默处理心跳，保持连接活跃
           } else if (data.type === 'message_start') {
@@ -232,11 +242,10 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
             const finalMessage = {
               id: data.message_id,
               agent_id: data.agent_id,
-              agent_name: agents.find(a => a.id === data.agent_id)?.name || `Agent ${data.agent_id}`,
-              content: data.final_content,
+              agent_name: data.agent_name || `Agent ${data.agent_id}`,
+              message_content: data.final_content,
               message_type: data.message_type,
               created_at: data.timestamp,
-              sent_at: data.timestamp,
               metadata: data.metadata
             };
 
@@ -284,20 +293,35 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
     }, 100);
   };
 
-  const startConversation = async () => {
+  const startConversation = async (forceRestart = false) => {
     try {
-      const response = await fetch(`http://localhost:8001/api/v1/meetings/${meetingId}/start-conversation`, {
+      const response = await fetch(`http://localhost:8001/api/v1/meetings/${meetingId}/start-conversation?force_restart=${forceRestart}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
 
       if (response.ok) {
-        message.success('开始智能体对话');
+        message.success(forceRestart ? '重新开始智能体对话' : '开始智能体对话');
       } else {
         message.error('启动对话失败');
       }
     } catch (error) {
       message.error('网络错误');
+    }
+  };
+
+  const restartConversation = async () => {
+    try {
+      // 清空当前消息
+      setMessages([]);
+      setVisibleMessages([]);
+      setTypingMessages(new Map());
+      setIsTyping(new Set());
+
+      // 强制重新开始对话
+      await startConversation(true); // 传入true启用force_restart
+    } catch (error) {
+      message.error('重新开始失败');
     }
   };
 
@@ -384,7 +408,7 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
   const progress = messages.length > 0 ? (currentMessageIndex / (messages.length - 1)) * 100 : 0;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative z-50">
       {/* 头部 */}
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex-1">
@@ -428,6 +452,13 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
                 className="bg-green-600 hover:bg-green-700"
               >
                 开始对话
+              </Button>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={restartConversation}
+                className="hover:border-orange-500 hover:text-orange-500"
+              >
+                重新开始
               </Button>
             </div>
             <div className="flex items-center space-x-4">
@@ -566,37 +597,22 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
         )}
 
         {/* 显示正在打字的消息 */}
-        {Array.from(typingMessages.entries()).map(([messageId, content]) => {
-          const agent = agents.find(a => a.id === messageId); // messageId might relate to agent
-
-          return (
-            <div key={`typing-${messageId}`} className="flex space-x-3 opacity-80">
-              <Avatar
-                icon={<UserOutlined />}
-                className="bg-green-500"
-              />
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-1">
-                  <span className="font-medium text-sm">
-                    正在输入...
-                  </span>
-                  <Tag color="processing" size="small">
-                    打字中
-                  </Tag>
-                  <span className="text-xs text-gray-500">
-                    {new Date().toLocaleTimeString()}
-                  </span>
-                </div>
-                <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                  <Text>
-                    {content}
-                    <span className="animate-pulse ml-1">|</span>
-                  </Text>
-                </div>
+        {Array.from(typingMessages.entries()).map(([messageId, content]) => (
+          <div key={`typing-${messageId}`} className="flex space-x-3">
+            <Avatar
+              icon={<UserOutlined />}
+              className="bg-blue-500"
+            />
+            <div className="flex-1">
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <Text>
+                  {content}
+                  <span className="animate-pulse ml-1">|</span>
+                </Text>
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
 
         <div ref={messagesEndRef} />
       </div>

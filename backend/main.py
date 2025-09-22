@@ -1,6 +1,11 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+import os
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 # 导入所有API路由
 from app.api.routes import router as legacy_router
