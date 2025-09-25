@@ -273,6 +273,7 @@ def get_meeting_participants(
 async def update_meeting_status(
     meeting_id: int,
     status_update: Dict[str, str],
+    background_tasks: BackgroundTasks,
     meeting_service: MeetingService = Depends(get_meeting_service)
 ):
     """
@@ -295,6 +296,28 @@ async def update_meeting_status(
         meeting = await meeting_service.update_meeting_status(meeting_id, new_status)
         if not meeting:
             raise HTTPException(status_code=404, detail="Meeting not found")
+        
+        # 如果状态变更为active，自动启动智能体对话
+        if new_status == "active":
+            from .meeting_stream import run_agent_conversation, active_conversations
+            if meeting_id not in active_conversations:
+                active_conversations.add(meeting_id)
+                background_tasks.add_task(run_agent_conversation, meeting_id, meeting_service.db)
+                logger.info(f"Auto-started agent conversation for meeting {meeting_id} due to status change")
+                
+                # 广播会议启动事件
+                await meeting_manager.broadcast_to_meeting(meeting_id, {
+                    "type": "meeting_activated",
+                    "meeting_id": meeting_id,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+        
+        # 如果状态变更为paused或completed，停止对话
+        elif new_status in ["paused", "completed", "cancelled"]:
+            from .meeting_stream import active_conversations
+            if meeting_id in active_conversations:
+                active_conversations.discard(meeting_id)
+                logger.info(f"Stopped agent conversation for meeting {meeting_id} due to status change to {new_status}")
         
         return {
             "id": meeting.id,
@@ -329,6 +352,7 @@ def remove_meeting_participant(
 @router.post("/meetings/{meeting_id}/start")
 async def start_meeting(
     meeting_id: int,
+    background_tasks: BackgroundTasks,
     meeting_service: MeetingService = Depends(get_meeting_service)
 ):
     """
@@ -346,7 +370,14 @@ async def start_meeting(
             "timestamp": datetime.utcnow().isoformat()
         })
         
-        return {"message": "Meeting started", "meeting": meeting.to_dict()}
+        # 自动启动智能体对话
+        from .meeting_stream import run_agent_conversation, active_conversations
+        if meeting_id not in active_conversations:
+            active_conversations.add(meeting_id)
+            background_tasks.add_task(run_agent_conversation, meeting_id, meeting_service.db)
+            logger.info(f"Auto-started agent conversation for meeting {meeting_id}")
+        
+        return {"message": "Meeting started and conversation initiated", "meeting": meeting.to_dict()}
     except HTTPException:
         raise
     except Exception as e:

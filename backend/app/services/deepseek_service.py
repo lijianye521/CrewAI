@@ -155,7 +155,13 @@ class DeepSeekService:
             
         except Exception as e:
             logger.error(f"Agent response generation failed: {str(e)}")
-            # 返回失败回退
+            
+            # 如果是网络连接问题，返回None而不是错误回退
+            if "Cannot connect to host" in str(e) or "ClientConnectorError" in str(e):
+                logger.warning("DeepSeek API network connection failed, returning None for fallback handling")
+                return None
+            
+            # 其他错误返回失败回退
             return {
                 "content": f"[{agent_config.get('name', 'Agent')}暂时无法响应，请稍后再试]",
                 "metadata": {"error": str(e)},

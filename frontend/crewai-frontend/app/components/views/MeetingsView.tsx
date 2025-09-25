@@ -124,6 +124,9 @@ export default function MeetingsView({ subView }: MeetingsViewProps) {
 
       if (response.ok) {
         message.success(`会议状态已更新为: ${getStatusText(newStatus)}`);
+        if (newStatus === 'active') {
+          message.info('智能体对话已自动启动', 3);
+        }
         fetchMeetings();
       } else {
         const errorData = await response.json();

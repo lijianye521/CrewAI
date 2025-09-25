@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional, AsyncGenerator
@@ -132,7 +132,7 @@ async def start_meeting_conversation(
     meeting_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_database_session),
-    force_restart: bool = False
+    force_restart: bool = Query(False, description="Force restart the conversation")
 ):
     """
     启动会议的智能体自动对话
@@ -709,6 +709,17 @@ async def generate_agent_response(
                     "content": mock_response["content"],
                     "type": mock_response["type"],
                     "metadata": {"generated_by": "mock", "agent_id": agent.id}
+                }
+            raise e
+        except Exception as e:
+            # 网络连接错误时，使用模拟回复
+            if "Cannot connect to host" in str(e) or "ClientConnectorError" in str(e):
+                logger.warning(f"DeepSeek API connection failed for agent {agent.name}, using mock response")
+                mock_response = generate_mock_response(agent, meeting, existing_messages)
+                return {
+                    "content": mock_response["content"],
+                    "type": mock_response["type"],
+                    "metadata": {"generated_by": "mock_fallback", "agent_id": agent.id, "error": "network_error"}
                 }
             raise e
 

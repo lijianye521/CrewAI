@@ -128,6 +128,7 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
       if (response.ok) {
         const data = await response.json();
         const normalizedMessages = normalizeMessages(data);
+        console.log('Fetched current messages:', normalizedMessages.length, normalizedMessages);
         setMessages(normalizedMessages);
         setVisibleMessages(normalizedMessages);
       }
@@ -175,15 +176,22 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
   };
 
   const normalizeMessage = (msg: any): Message => {
-    return {
+    // 尝试从agents列表中找到agent名称
+    const agent = agents.find(a => a.id === msg.agent_id);
+    const agentName = msg.agent_name || agent?.name || `Agent ${msg.agent_id}`;
+    
+    const normalized = {
       id: msg.id,
       agent_id: msg.agent_id,
-      agent_name: msg.agent_name,
+      agent_name: agentName,
       message_content: msg.message_content || msg.content || '',
       message_type: msg.message_type || 'message',
       created_at: msg.created_at,
       metadata: msg.metadata
     };
+    
+    console.log('Normalized message:', normalized);
+    return normalized;
   };
 
   const connectToSSE = () => {
@@ -210,13 +218,39 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
           if (data.type === 'new_message') {
             // 处理完整的新消息（非打字机效果）
             const newMessage = normalizeMessage(data.message);
-            setMessages(prev => [...prev, newMessage]);
-            setVisibleMessages(prev => [...prev, newMessage]);
+            console.log('Adding new message:', newMessage);
+            setMessages(prev => {
+              // 避免重复添加
+              if (prev.some(msg => msg.id === newMessage.id)) {
+                return prev;
+              }
+              return [...prev, newMessage];
+            });
+            setVisibleMessages(prev => {
+              // 避免重复添加
+              if (prev.some(msg => msg.id === newMessage.id)) {
+                return prev;
+              }
+              return [...prev, newMessage];
+            });
           } else if (data.type === 'existing_message') {
-            // 处理现有消息
+            // 处理现有消息 - 只在初始加载时添加
             const existingMessage = normalizeMessage(data.message);
-            setMessages(prev => [...prev, existingMessage]);
-            setVisibleMessages(prev => [...prev, existingMessage]);
+            console.log('Adding existing message:', existingMessage);
+            setMessages(prev => {
+              // 避免重复添加
+              if (prev.some(msg => msg.id === existingMessage.id)) {
+                return prev;
+              }
+              return [...prev, existingMessage];
+            });
+            setVisibleMessages(prev => {
+              // 避免重复添加
+              if (prev.some(msg => msg.id === existingMessage.id)) {
+                return prev;
+              }
+              return [...prev, existingMessage];
+            });
           } else if (data.type === 'meeting_status') {
             setMeeting(prev => prev ? { ...prev, status: data.status } : null);
           } else if (data.type === 'connected') {
@@ -249,8 +283,22 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
               metadata: data.metadata
             };
 
-            setMessages(prev => [...prev, finalMessage]);
-            setVisibleMessages(prev => [...prev, finalMessage]);
+            console.log('Message complete, adding final message:', finalMessage);
+            
+            setMessages(prev => {
+              // 避免重复添加
+              if (prev.some(msg => msg.id === finalMessage.id)) {
+                return prev;
+              }
+              return [...prev, finalMessage];
+            });
+            setVisibleMessages(prev => {
+              // 避免重复添加
+              if (prev.some(msg => msg.id === finalMessage.id)) {
+                return prev;
+              }
+              return [...prev, finalMessage];
+            });
 
             // 清除打字机状态
             setIsTyping(prev => {
@@ -295,17 +343,27 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
 
   const startConversation = async (forceRestart = false) => {
     try {
-      const response = await fetch(`http://localhost:8001/api/v1/meetings/${meetingId}/start-conversation?force_restart=${forceRestart}`, {
+      console.log('Starting conversation with forceRestart:', forceRestart);
+      
+      const url = `http://localhost:8001/api/v1/meetings/${meetingId}/start-conversation${forceRestart ? '?force_restart=true' : ''}`;
+      console.log('Request URL:', url);
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
 
       if (response.ok) {
+        const result = await response.json();
+        console.log('Start conversation result:', result);
         message.success(forceRestart ? '重新开始智能体对话' : '开始智能体对话');
       } else {
+        const errorText = await response.text();
+        console.error('Start conversation failed:', response.status, errorText);
         message.error('启动对话失败');
       }
     } catch (error) {
+      console.error('Start conversation error:', error);
       message.error('网络错误');
     }
   };
@@ -318,8 +376,20 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
       setTypingMessages(new Map());
       setIsTyping(new Set());
 
+      // 重新连接SSE（先断开再连接）
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+        setIsConnected(false);
+      }
+
       // 强制重新开始对话
       await startConversation(true); // 传入true启用force_restart
+      
+      // 等待一小段时间后重新连接SSE
+      setTimeout(() => {
+        connectToSSE();
+      }, 1000);
     } catch (error) {
       message.error('重新开始失败');
     }
@@ -460,6 +530,19 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
               >
                 重新开始
               </Button>
+              {/* 调试：刷新消息按钮 */}
+              {process.env.NODE_ENV === 'development' && (
+                <Button
+                  size="small"
+                  onClick={() => {
+                    console.log('Manual refresh messages');
+                    fetchCurrentMessages();
+                  }}
+                  className="text-xs"
+                >
+                  刷新消息
+                </Button>
+              )}
             </div>
             <div className="flex items-center space-x-4">
               <Text type="secondary" className="text-sm">
@@ -557,11 +640,24 @@ export default function MeetingDetailPanel({ meetingId, onClose }: MeetingDetail
 
       {/* 消息列表区域 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+        {/* 调试信息 */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="text-xs text-gray-400 border-b pb-2">
+            调试信息: visibleMessages={visibleMessages.length}, messages={messages.length}, connected={isConnected}
+          </div>
+        )}
+        
         {visibleMessages.length === 0 ? (
           <div className="text-center py-8">
             <Text type="secondary">
               {isActiveMeeting ? '暂无对话，点击"开始对话"让智能体开始讨论' : '该会议没有历史消息记录'}
             </Text>
+            {/* 调试：显示原始消息数量 */}
+            {process.env.NODE_ENV === 'development' && messages.length > 0 && (
+              <div className="text-xs text-red-500 mt-2">
+                调试：有 {messages.length} 条原始消息但未显示
+              </div>
+            )}
           </div>
         ) : (
           visibleMessages.map((msg, index) => {
