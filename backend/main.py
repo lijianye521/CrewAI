@@ -15,7 +15,7 @@ from app.api.config import router as config_router
 from app.api.test import router as test_router
 from app.api.meeting_stream import router as meeting_stream_router
 
-# 导入数据库相关
+# 导入数据库相
 from app.models import create_database, get_database_session, init_sample_data
 
 app = FastAPI(
